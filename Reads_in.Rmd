@@ -1,0 +1,482 @@
+---
+title: "Reads"
+author: "Niklas Schandry"
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    fig_caption: yes
+    fig_height: 9
+    fig_width: 16
+    highlight: haddock
+    theme: cosmo
+    toc: yes
+    toc_float: yes
+---
+
+# About
+
+This file documents the read processing for Schandry, et al., 2020
+
+# Prepare session
+
+```{r setup}
+# Since this is the first real day, load all packages you will need
+###Dada2
+library("dada2")
+
+###Analysis
+library("phyloseq")
+library("taxa")
+library("phangorn")
+library("DECIPHER")
+
+###Tidy Tools
+library("tidyverse")
+library("ggthemes")
+library("ggExtra")
+library("stringr")
+library("readxl")
+library("ggforce")
+library("patchwork")
+library("gt")
+library("magrittr")
+```
+
+
+
+```{r}
+## Define paths
+top_path <- c("") # Is empty because you will work in the working directory.
+read_path <- paste0(top_path, "fastq/")
+
+## Make a paths table
+
+paths <- tibble(
+  F1_path = paste0(read_path, list.files(path = read_path, pattern = "F1.fastq")), 
+  F2_path = paste0(read_path, list.files(path = read_path, pattern = "F2.fastq"))) %>%  
+  separate(F1_path, c("prefix", "sample_id", "sample_conc_tag"), sep = c("_" ), remove = F) %>% 
+  mutate( 
+    sample_conc_tag = str_extract(sample_conc_tag, "[A|C|G|T]+"), 
+         prefix = str_extract(prefix, "000000000-[a-zA-Z0-9_]+") 
+    # Fix the prefix field. I forgot why this is neccessary.
+    )
+
+## Read the Sample sheet. This contains additional metadata that relate to the experimental details.
+SynCom_Samples <- read_csv("files_publication/sample_sheet.csv")
+
+## Join the sample sheet and the paths table.
+## This gives a table that contains the paths for each sample, with all metadata available.
+SynCom_Samples %<>% 
+  left_join(paths, by = c("prefix","sample_conc_tag"))
+```
+
+
+## Quality control.
+
+### Forward read qualities 
+
+#### 24h 
+
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% 
+                     filter(Timepoint == "24h") %$%  
+                     F1_path ) + 
+  ggtitle("24h, FWD") 
+```
+
+#### 48h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% 
+                     filter(Timepoint == "48h") %$%  
+                     F1_path ) + 
+  ggtitle("48h, FWD") 
+```
+
+
+#### 72h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% 
+                     filter(Timepoint == "72") %$%  
+                     F1_path ) + 
+  ggtitle("72, FWD") 
+```
+
+
+#### 96h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% 
+                     filter(Timepoint == "96h") %$%  
+                     F1_path ) + 
+  ggtitle("96h, FWD") 
+```
+
+
+
+### Reverse read qualities
+
+#### 24h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% filter(Timepoint == "24h") %$%  F2_path ) +
+  ggtitle("24h, REV")
+```
+
+#### 48h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% filter(Timepoint == "48h") %$%  F2_path ) +
+  ggtitle("48h, REV")
+```
+
+
+#### 72h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% filter(Timepoint == "72h") %$%  F2_path ) +
+  ggtitle("72h, REV")
+```
+
+#### 96h
+
+```{r}
+plotQualityProfile(SynCom_Samples %>% filter(Timepoint == "96h") %$%  F2_path ) +
+  ggtitle("96h, REV")
+```
+
+## Read filtering
+
+We remove the negative control
+
+```{r}
+SynCom_Samples %<>% filter(sample_genotype != "SyncomNegative_Control")
+```
+
+
+### Paths for filtered reads
+
+```{r}
+# Filtered reads will go here. This simply adds /filtered to the read_path.
+filt_path <- file.path(read_path, "filtered")
+
+# Define information for forward reads
+# This generates a lot of paths. 
+filtFs <- file.path(filt_path, 
+                    paste0(SynCom_Samples$sample_description,
+                           "_",
+                           SynCom_Samples$sample_comments %>%
+                            str_replace(" ", "_"), "_F1_filtered.fastq")) %>%
+          tibble(path = .,
+                 Timepoint = c(rep("24h", 75),
+                               rep("48h", 75),
+                               rep("72h", 75),
+                               rep("96h", 75))
+                 )
+
+filtRs <- file.path(filt_path,
+                    paste0(SynCom_Samples$sample_description,
+                           "_",
+                           SynCom_Samples$sample_comments %>%
+                             str_replace(" ", "_"),
+                           "_F2_filtered.fastq")) %>%
+        tibble(path = . ,
+               Timepoint = c(rep("24h", 75),
+                             rep("48h", 75),
+                             rep("72h", 75),
+                             rep("96h", 75)))
+```
+
+
+### Filtering
+
+Filter reads
+
+```{r eval = F}
+filter_output <- filterAndTrim(SynCom_Samples %$% F1_path, # Path of the Forward reads
+              filtFs %$% path, # Output path, Forward
+              SynCom_Samples %$% F2_path, # Reverse Reads, raw
+              filtRs %$% path, # Output path, Reverse
+              truncLen = c(280,240), # Truncation. First value is for forward, second is for reverse read
+              maxN=0, # Maximum N (uncalled bases) allowed. None. 
+              truncQ=2, # Quality trimming
+              maxEE = c(2,2),
+              rm.phix=TRUE, # Remove phiX spike-ins
+              # Computer parameters, ignore for now
+              compress=TRUE, 
+              multithread=TRUE,
+              n=5e6) #n was increased from 5e5
+```
+## Error rates
+
+```{r learn errors, eval = FALSE}
+### 24h
+
+errF_24h <- learnErrors(filtFs %>% filter(Timepoint == "24h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errF_24h, paste0("rds/errs/", "errF_24h.rds"))
+errR_24h <- learnErrors(filtRs %>% filter(Timepoint == "24h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errR_24h, paste0("rds/errs/", "errR_24h.rds"))
+
+### 48h
+
+errF_48h <- learnErrors(filtFs %>% filter(Timepoint == "48h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errF_48h, paste0("rds/errs/", "errF_48h.rds"))
+errR_48h <- learnErrors(filtRs %>% filter(Timepoint == "48h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errR_48h, paste0("rds/errs/", "errR_48h.rds"))
+
+### 72h
+
+errF_72h <- learnErrors(filtFs %>% filter(Timepoint == "72h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errF_72h, paste0("rds/errs/", "errF_72h.rds"))
+errR_72h <- learnErrors(filtRs %>% filter(Timepoint == "72h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errR_72h, paste0("rds/errs/", "errR_72h.rds"))
+
+### 96h
+
+errF_96h <- learnErrors(filtFs %>% filter(Timepoint == "96h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errF_96h, paste0("rds/errs/", "errF_96h.rds"))
+errR_96h <- learnErrors(filtRs %>% filter(Timepoint == "96h") %$% path, multithread = TRUE, nbases = 5e8, randomize = TRUE)
+write_rds(errR_96h, paste0("rds/errs/", "errR_96h.rds"))
+```
+
+## Dereplication
+
+Elegant loop 
+
+```{r}
+for(cur_syncom in unique(SynCom_Samples$sample_genotype)) {
+
+# 24h  
+sample.names <- SynCom_Samples %>%
+  dplyr::filter(Timepoint == "24h",
+         sample_genotype == cur_syncom) %$%
+  sample_name
+
+mergers <- vector("list", length(sample.names))
+
+names(mergers) <- sample.names
+
+filtF_24h <- filtFs %>% 
+  dplyr::filter(Timepoint == "24h",
+         grepl(cur_syncom, path)) %$%
+  path
+
+filtR_24h <- filtRs %>% dplyr::filter(Timepoint == "24h",
+         grepl(cur_syncom, path)) %$%
+  path
+
+
+names(filtF_24h) <- sample.names
+
+names(filtR_24h) <- sample.names
+
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtF_24h[[sam]])
+    ddF <- dada(derepF,
+                err=errF_24h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    derepR <- derepFastq(filtR_24h[[sam]])
+    ddR <- dada(derepR,
+                err=errR_24h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+}
+
+rm(derepF); rm(derepR); rm(filtF_24h); rm(filtR_24h)
+# Construct sequence table 
+
+write_rds(mergers, paste0("rds/",cur_syncom,"_mergers_with_priors_24h.rds"))
+seqtab <- makeSequenceTable(mergers)
+write_rds(seqtab, paste0("rds/",cur_syncom,"_seqtab_with_priors_24h.rds"))
+
+
+# 48 hrs
+sample.names <- SynCom_Samples %>%
+       dplyr::filter(Timepoint == "48h",
+              sample_genotype == cur_syncom) %$%
+  sample_name
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+filtF_48h <- filtFs %>% dplyr::filter(Timepoint == "48h",
+         grepl(cur_syncom, path)) %$%
+  path
+
+filtR_48h <- filtRs %>% dplyr::filter(Timepoint == "48h",
+         grepl(cur_syncom, path)) %$%
+  path
+
+names(filtF_48h) <- sample.names
+names(filtR_48h) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtF_48h[[sam]])
+    ddF <- dada(derepF,
+                err=errF_48h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    derepR <- derepFastq(filtR_48h[[sam]])
+    ddR <- dada(derepR,
+                err=errR_48h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+}
+rm(derepF); rm(derepR); rm(filtF_48h); rm(filtR_48h)
+# Construct sequence table
+
+write_rds(mergers, paste0("rds/",cur_syncom,"_mergers_with_priors_48h.rds"))
+seqtab <- makeSequenceTable(mergers)
+write_rds(seqtab, paste0("rds/",cur_syncom,"_seqtab_with_priors_48h.rds"))
+
+# 72 hrs
+
+sample.names <- SynCom_Samples %>% 
+  dplyr::filter(Timepoint == "72h",
+         sample_genotype == cur_syncom) %$%
+  sample_name
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+filtF_72h <- filtFs %>% dplyr::filter(Timepoint == "72h",
+         grepl(cur_syncom, path)) %$%
+  path
+filtR_72h <- filtRs %>% dplyr::filter(Timepoint == "72h",
+         grepl(cur_syncom, path)) %$%
+  path
+names(filtF_72h) <- sample.names
+names(filtR_72h) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtF_72h[[sam]])
+    ddF <- dada(derepF,
+                err=errF_72h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    derepR <- derepFastq(filtR_72h[[sam]])
+    ddR <- dada(derepR,
+                err=errR_72h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+}
+rm(derepF); rm(derepR); rm(filtF_72h); rm(filtR_72h)
+
+# Construct sequence table and remove chimeras
+write_rds(mergers, paste0("rds/",cur_syncom,"_mergers_with_priors_72h.rds"))
+seqtab <- makeSequenceTable(mergers)
+write_rds(seqtab, paste0("rds/",cur_syncom,"_seqtab_with_priors_72h.rds"))
+
+# 96 hrs
+
+sample.names <- SynCom_Samples %>%
+  dplyr::filter(Timepoint == "96h",
+         sample_genotype == cur_syncom) %$%
+  sample_name
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+filtF_96h <- filtFs %>% dplyr::filter(Timepoint == "96h",
+         grepl(cur_syncom, path)) %$%
+  path
+filtR_96h <- filtRs %>% dplyr::filter(Timepoint == "96h",
+         grepl(cur_syncom, path)) %$%
+  path
+names(filtF_96h) <- sample.names
+names(filtR_96h) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtF_96h[[sam]])
+    ddF <- dada(derepF,
+                err=errF_96h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    derepR <- derepFastq(filtR_96h[[sam]])
+    ddR <- dada(derepR,
+                err=errR_96h,
+                priors = read_rds(paste0("files_publication/",cur_syncom,"_16s.rds")),
+                multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+}
+rm(derepF); rm(derepR); rm(filtF_96h); rm(filtR_96h)
+
+# Construct sequence table and remove chimeras
+write_rds(mergers, paste0("rds/",cur_syncom,"_mergers_with_priors_96h.rds"))
+seqtab <- makeSequenceTable(mergers)
+write_rds(seqtab, paste0("rds/",cur_syncom,"_seqtab_with_priors_96h.rds"))
+}
+```
+
+## Make Syncom Sequencetables
+
+```{r}
+for(cur_syncom in unique(SynCom_Samples$sample_genotype)) {
+makeSequenceTable(c(
+  read_rds(paste0("rds/", cur_syncom, "_mergers_with_priors_24h.rds")), 
+  read_rds(paste0("rds/", cur_syncom, "_mergers_with_priors_48h.rds")),
+  read_rds(paste0("rds/", cur_syncom, "_mergers_with_priors_72h.rds")),
+  read_rds(paste0("rds/", cur_syncom, "_mergers_with_priors_96h.rds")))
+  ) %>% 
+write_rds(paste0("rds/", cur_syncom, "_seqtable.rds"))
+}
+```
+
+
+## Remove chimeras
+
+```{r}
+for(cur_syncom in unique(SynCom_Samples$sample_genotype)) {
+read_rds(paste0("rds/", cur_syncom, "_seqtable.rds")) %>% 
+    removeBimeraDenovo() %>% 
+    write_rds(paste0("rds/", cur_syncom, "_seqtable_nochim.rds"))
+}
+```
+
+## Make trees 
+
+```{r eval = F}
+for(cur_syncom in unique(SynCom_Samples$sample_genotype)) {
+seqs <- getSequences(read_rds(paste0("rds/", cur_syncom, "_seqtable_nochim.rds")))
+names(seqs) <- seqs 
+seqs_aligned <- AlignSeqs(DNAStringSet(seqs), anchor=NA)
+
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) 
+fit = pml(tree_NJ, data=phang_align)
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR,
+                     model = "GTR",
+                     optInv = TRUE,
+                     optGamma = TRUE,
+                     rearrangement = "stochastic",
+                     control = pml.control(trace = 0))
+write_rds(fit_GTR, paste0("rds/", cur_syncom, "_GTR_tree.rds"))
+}
+rm(seqs)
+rm(seqs_aligned)
+rm(phang_align)
+rm(dist_m)
+rm(tree_NJ)
+rm(fit)
+rm(fit_GTR)
+```
+
+The analysis is continued in Community_Analysis.Rmd
+
+# sessionInfo
+
+```{r}
+sessionInfo()
+```
+
+

@@ -1,0 +1,1214 @@
+---
+title: "Isolate growth"
+author: "Niklas Schandry"
+date: "2020"
+output: 
+  html_document:
+    fig_caption: yes
+## Widescreen figures
+    fig_height: 9
+    fig_width: 16
+## Highlighting    
+    highlight: zenburn
+    theme: cosmo
+### TOC    
+    toc: yes
+    toc_float: yes
+---
+
+# About
+
+This file documents the isolate analysis for Schandry, et al., 2020
+
+# Prepare session
+
+## Load libraries
+
+```{r eval = T, message = F}
+library(tidyverse)
+library(magrittr)
+library(DECIPHER)
+library(phangorn)
+library(patchwork)
+library(ggtree)
+require(wesanderson)
+source("functions/read_fasta.R")
+```
+
+# Compute tree
+
+This tree is saved, chunk not evaluated to save time on knits.
+
+```{r eval = F}
+Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% as.data.frame() %>% rownames_to_column("Strain")
+Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>% as.data.frame() %>% rownames_to_column("Strain")
+all_16s <- bind_rows(Root_16S,Soil_16S) 
+all_16s <- all_16s %>% filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763") # Remove strain that lacks Genus information..
+
+colnames(all_16s) <- c("Strain", "rRNA_16S")
+
+relevant_16S <- all_16s %$% DNAStringSet(rRNA_16S)
+names(relevant_16S) <- all_16s$Strain
+
+
+
+seqs_aligned <- AlignSeqs(relevant_16S, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Strain_tree.rds")
+```
+
+# Refined Taxonomic database
+
+For reasons that are not completely clear, the order and class information is missing from the tables.
+This information will be added from the bac120_taxonomy.tsv (genome taxonomy database https://www.nature.com/articles/nbt.4229) 
+
+```{r eval = F}
+tax_info <- read_tsv("files_publication/bac120_taxonomy.tsv") %>%
+  set_colnames(c("col1", "col2")) %>% 
+  dplyr::select(col2) %>% 
+  mutate(col2 = col2 %>% str_remove_all("[a-z]__")) %>% 
+  separate(col2, c("Domain","Phylum","Class","Order","Family","Genus","Species"), sep = ";") %>% 
+  dplyr::select(-Species) %>% 
+  unique()
+# Add missing information
+tax_info <- rbind(tax_info,
+            c("Bacteria",
+              "Proteobacteria",
+              "Betaproteobacteria",
+              "Burkholderiales",
+              "Comamonadaceae",
+              "Acidovorax")) %>% 
+            rbind(
+             c("Bacteria",
+               "Proteobacteria",
+               "Gammaproteobacteria",
+               "Xanthomonadales",
+               "Xanthomonadaceae",
+               "Pseudoxanthomonas"))
+
+write_rds(tax_info, "data/taxonomy.rds")
+```
+
+# Read files
+
+Read the growth data and the tree
+
+```{r}
+tax_info <- read_rds("files_publication/taxonomy.rds")
+### read growth data
+AUC_emmeans <- read_rds("files_publication/AUC_emmeans_pub.rds") %>% 
+  left_join(tax_info %>%
+            dplyr::select(Genus, Class, Order), by = "Genus")
+tree_data <- AUC_emmeans %>% 
+  mutate(id = str_c(Genus,Strain ,sep ="_"))
+
+### read tree
+fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+
+syncoms <-  rbind(
+                  read_rds("files_publication/syncom_reduced_mixed.rds") %>% 
+                   dplyr::select(Strain) %>%
+                   mutate(Syncom = "Reduced Mixed"),
+                 read_rds("files_publication/syncom_reduced_tolerant.rds") %>%
+                   dplyr::select(Strain) %>% 
+                   mutate(Syncom = "Reduced Tolerant"),
+                 read_rds("files_publication/syncom_reduced_sensitive.rds") %>% 
+                   dplyr::select(Strain) %>%
+                   mutate(Syncom = "Reduced Sensitive"),
+                 read_rds("files_publication/syncom_full_random.rds") %>%
+                   dplyr::select(Strain) %>%
+                   mutate(Syncom = "Random")
+                 )
+
+```
+
+# Some descriptive stats of the growth data
+
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x %in% c("1uM_APO","5uM_APO","10uM_APO","50uM_APO")) %>%
+  dplyr::select(Strain, estimate, Treat.x) %>% 
+  mutate(Treatment = fct_relevel(Treat.x, c("1uM_APO","5uM_APO","10uM_APO","50uM_APO"))) %>% 
+  dplyr::select(-Treat.x) %>% 
+  distinct() %>% 
+  group_by(Treatment) %>% 
+  mutate(Sensitive = case_when(estimate > 0.5 ~ "No",
+                                   TRUE ~ "Yes")) %>% 
+  group_by(Treatment, Sensitive) %>% 
+  tally()
+```
+
+## Density plots
+
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x %in% c("1uM_APO","5uM_APO","10uM_APO","50uM_APO")) %>%
+  dplyr::select(Strain, estimate, Treat.x) %>% 
+  mutate(Treatment = fct_relevel(Treat.x, c("1uM_APO","5uM_APO","10uM_APO","50uM_APO"))) %>% 
+  dplyr::select(-Treat.x) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_density(aes(x=estimate, 
+                   #color = Treatment, 
+                   fill = Treatment), alpha = 0.3) +
+  theme_bw(base_family = "NimbusMon") +
+  ggtitle("Estimated relative growth for APO treatments")
+```
+
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x %in% c("100uM_BOA","50uM_BOA", "10uM_BOA")) %>%
+  dplyr::select(Strain, estimate, Treat.x) %>% 
+  mutate(Treatment = fct_relevel(Treat.x, c("10uM_BOA","50uM_BOA","100uM_BOA" ))) %>% 
+  dplyr::select(-Treat.x) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_density(aes(x=estimate, 
+                   #color = Treatment, 
+                   fill = Treatment), alpha = 0.3) +
+  theme_bw(base_family = "NimbusMon") +
+    ggtitle("Estimated relative growth for BOA treatments")
+```
+
+# Heatmap tree
+
+```{r}
+### Below creates "Group Info", which is currently the Genus. Extracted from tiplabels, see above chunk for modification of tiplabels.
+tree_structure <- fit_GTR$tree %>% as.phylo
+groupInfo <- split(fit_GTR$tree$tip.label, gsub("_\\w+", "", fit_GTR$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+```
+
+```{r}
+tree_plot_data <- cbind(
+           tree_data %>%
+             filter(Chem == "APO") %>% 
+             mutate(Chem_conc = paste0(Chem,Conc)) %>% 
+             dplyr::select(id, Chem_conc, estimate) %>%
+             distinct %>% 
+             spread(Chem_conc, estimate) %>%
+             as.data.frame() %>% 
+             dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+             separate(id, into = c("Genus","Strain"), sep = "_", remove = FALSE) %>% 
+             left_join(., AUC_emmeans %>% dplyr::select(Strain, Family, Order, Class, Phylum), by = "Strain") %>% 
+             distinct()  ,
+          dummy1 = c(rep(NA,180)),
+          dummy2 = c(rep(NA,180)),
+         tree_data %>% filter(Chem == "BOA")  %>%
+             mutate(Chem_conc = paste0(Chem,Conc)) %>% 
+             dplyr::select(id,Chem_conc, estimate) %>%
+             distinct %>% 
+             spread(Chem_conc, estimate) %>%
+             dplyr::select("BOA10","BOA50","BOA100") %>% 
+             as.data.frame()) 
+
+
+
+tree_data_boa <-  tree_plot_data %>% 
+           dplyr::select("id","BOA10","BOA50","BOA100") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("10µM BOA", "50µM BOA", "100µM BOA"))
+tree_data_apo <- tree_plot_data %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+# Make a wide table of memberships, since syncoms were rbinded, there is one entry for each strain/syncom combination.
+
+
+syncom_memberships <- left_join(tree_plot_data %>% dplyr::select(Strain, id),
+  syncoms %>%
+    mutate(member = as.factor(case_when(
+                              Syncom == "Reduced Mixed" ~ "Mixed",
+                              Syncom == "Reduced Tolerant" ~ "Tolerant",
+                              Syncom == "Reduced Sensitive" ~ "Sensitive",
+                              Syncom == "Random" ~ "Random",
+                              TRUE ~ "NA"))) %>%
+             pivot_wider(names_from = Syncom, values_from = member),
+  by = "Strain")
+```
+
+### Family level heatmap
+
+```{r}
+fan_tree_family <- tree_structure %>%
+  ggtree(branch.length = "none",
+         layout = "fan",
+         open.angle = 10) %<+% (tree_plot_data %>% mutate(Phylum_Family = paste(Phylum, Family, sep = "_")))
+set.seed(42069)
+fan_tree_family <- fan_tree_family +
+    geom_tippoint(aes(color =  Family,
+                      shape = Class),
+                  size = 1) +
+  scale_color_manual("Family",
+                     values = sample(c('#543005','#8c510a','#bf812d',
+                                '#dfc27d','#f6e8c3','#4d9221',
+                                '#c7eae5','#80cdc1','#35978f',
+                                '#01665e','#003c30','#8e0152',
+                                '#c51b7d','#de77ae','#f1b6da',
+                                '#fde0ef','#000000','#e6f5d0',
+                                '#b8e186','#7fbc41','#fb8072',
+                                '#276419','#40004b','#bababa'),24),
+                     guide = "legend") +
+  scale_shape(breaks = c("Alphaproteobacteria",
+                         "Betaproteobacteria",
+                         "Gammaproteobacteria",
+                         "Actinomycetia",
+                         "Bacteroidia",
+                         "Bacilli"))
+```
+
+```{r}
+fan_tree_family <- fan_tree_family + guides(Family = guide_legend(ncol = 2, byrow = TRUE))
+```
+
+
+```{r}
+heat_boa_fam <- gheatmap(fan_tree_family,
+         tree_data_boa,
+         offset=0.3,
+         width=0.2,
+         colnames_angle = 90,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth")  +
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       name = "Rel. growth")
+heat_boa_apo_fam <- gheatmap(heat_boa_fam, 
+         tree_data_apo,
+         offset=5.7,
+         width=0.2,
+         colnames_angle = 90,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon"))
+heat_boa_apo_fam
+```
+
+### Full family plot
+
+```{r}
+fan_tree_family <- fan_tree_family + guides(Family = guide_legend(ncol = 3, byrow = TRUE))
+heat_boa_fam <- gheatmap(fan_tree_family,
+         tree_data_boa,
+         offset=0.3,
+         width=0.2,
+         colnames_angle = 90,
+         colnames = T, 
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth")  +
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       name = "Rel. growth")
+heat_boa_apo_fam <- gheatmap(heat_boa_fam, 
+         tree_data_apo,
+         offset=5.7,
+         width=0.2,
+         colnames_angle = 90,
+         colnames = T, 
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon"))
+heat_boa_apo_fam <- heat_boa_apo_fam + ggnewscale::new_scale_fill()
+heat_boa_apo_fam_syncom <- gheatmap(heat_boa_apo_fam, 
+         syncom_memberships %>% 
+           dplyr::select("id","Random",
+                              "Reduced Tolerant",
+                              "Reduced Mixed",
+                              "Reduced Sensitive") %>% 
+           column_to_rownames("id"),
+         offset=11.5,
+         width=0.2,
+         colnames_angle = 90,
+         hjust = 0.5,
+         font.size = 0) + 
+  ggthemes::scale_fill_few(na.value = "grey80",
+                           name = "Syncom",
+                           labels = c("Random",
+                                      "Tolerant",
+                                      "Mixed",
+                                      "Sensitive"),
+                           breaks = c("Random",
+                                      "Tolerant",
+                                      "Mixed",
+                                      "Sensitive")) +
+  theme(text = element_text(family = "NimbusMon"),
+        legend.position = "left") 
+heat_boa_apo_fam_syncom + plot_annotation(title = "Fig 1") & theme(text = element_text(family = "NimbusMon")) 
+```
+
+```{r}
+heat_boa_apo_fam_syncom & theme(legend.position = "none") 
+```
+
+### Plot without legend
+
+```{r}
+heat_boa_apo_fam_syncom & theme(legend.position = "none") 
+```
+
+## Legend only
+
+```{r}
+cowplot::ggdraw(cowplot::get_legend(heat_boa_apo_fam_syncom))
+```
+
+# Family subset
+
+```{r}
+AUC_emmeans %$% Family %>% as.factor() %>% levels
+```
+
+```{r}
+AUC_emmeans %>% dplyr::select(Family,Genus, Strain) %>% unique() %>% group_by(Family) %>% tally %>% arrange(desc(n), Family)
+```
+
+```{r}
+AUC_emmeans %>% filter(Family == "Nocardioidaceae") %>% dplyr::select(Phylum) %>% unique()
+```
+```{r}
+AUC_emmeans %>% filter(Family == "Rhizobiaceae") %>% dplyr::select(Phylum) %>% unique()
+```
+```{r}
+AUC_emmeans %>% filter(Family == "Microbacteriaceae") %>% dplyr::select(Phylum) %>% unique()
+```
+```{r}
+AUC_emmeans %>% filter(Phylum == "Firmicutes") %>% dplyr::select(Genus) %>% unique()
+```
+
+```{r}
+AUC_emmeans %>% colnames
+```
+
+## Commamodaceae
+
+```{r}
+Comamonadaceae <- AUC_emmeans %>% filter(Family == "Comamonadaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_comamo <- Comamonadaceae$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Comamonadaceae_tree <- drop.tip(tree_structure, not_comamo) 
+```
+
+```{r}
+Comamonadaceae_tree <- Comamonadaceae_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+```
+
+
+```{r}
+Comamonadaceae_tree_boa <- gheatmap(Comamonadaceae_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish) +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Comamonadaceae")+
+  layout_dendrogram() +
+    geom_tippoint(aes(color = Genus)) +
+    ggthemes::scale_color_hc()
+Comamonadaceae_tree_boa_apo <- gheatmap(Comamonadaceae_tree_boa, 
+         tree_data_apo,
+         offset=2,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish)
+```
+
+```{r}
+Comamonadaceae_tree_boa_apo
+```
+
+
+## Microbacteriaceae
+
+
+```{r}
+Microbacteria <- AUC_emmeans %>% filter(Family == "Microbacteriaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_Microbacteria <- Microbacteria$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Microbacteria_tree <- drop.tip(tree_structure, not_Microbacteria)
+
+Microbacteria_tree <- Microbacteria_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Microbacteria_tree <- Microbacteria_tree + 
+  layout_dendrogram() + 
+  ggtitle("Microbacteria") +
+    geom_tippoint(aes(color = Genus), size = 2) +
+  scale_color_manual(values = wesanderson::wes_palette("Darjeeling2",4,"discrete"))
+
+Microbacteria_tree <- rotate(Microbacteria_tree, 19)
+```
+
+```{r}
+Microbacteria_tree_boa <- gheatmap(Microbacteria_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Microbacteriaceae, BOA") 
+
+
+Microbacteria_tree_boa
+```
+
+```{r}
+Microbacteria_tree_boa_apo <- gheatmap(Microbacteria_tree_boa, 
+         tree_data_apo,
+         offset=2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Microbacteriaceae") +
+  theme(legend.position = "left")
+Microbacteria_tree_boa_apo
+```
+
+
+## Rhizobiaceae
+
+
+```{r}
+Rhizobia <- AUC_emmeans %>% filter(Family == "Rhizobiaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_rhizobium <- Rhizobia$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Rhizobia_tree <- drop.tip(tree_structure, not_rhizobium)
+```
+
+```{r}
+Rhizobia_tree <- Rhizobia_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Rhizobia_tree <- Rhizobia_tree + 
+  layout_dendrogram() + 
+  ggtitle("Rhizobia") +
+    geom_tippoint(aes(color = Genus), size = 2) +
+    scale_color_manual(values = wesanderson::wes_palette("BottleRocket2", 2 ,"discrete"))
+```
+
+
+```{r}
+Rhizobia_tree_boa <- gheatmap(Rhizobia_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Rhizobiaceae, BOA") 
+
+
+Rhizobia_tree_boa
+```
+
+```{r}
+Rhizobia_tree_boa_apo <- gheatmap(Rhizobia_tree_boa, 
+         tree_data_apo,
+         offset=1.8,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Rhizobiaceae") +
+  theme(legend.position = "left")
+Rhizobia_tree_boa_apo
+```
+
+
+```{r}
+Rhizobia_tree_apo <- gheatmap(Rhizobia_tree, 
+         tree_data_apo,
+         offset=0.8,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Rhizobiaceae, APO")
+Rhizobia_tree_apo
+```
+
+```{r}
+AUC_emmeans %>% filter(Family == "Rhizobiaceae") %>% filter(str_detect(Treat.x,"BOA")) %>% dplyr::select(Strain, Conc, estimate) %>% unique %>% filter(Conc == 100) %>% arrange(desc(estimate))
+```
+
+Root708 seems to grow particularily well in BOA
+
+```{r}
+AUC_emmeans %>% filter(Strain == "Root708") %>% 
+  dplyr::select(Treat.x, estimate) %>% unique
+```
+
+
+
+
+## Xanthomonadaceae
+
+
+```{r}
+Xantho <- AUC_emmeans %>% filter(Family == "Xanthomonadaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_Xantho <- Xantho$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Xantho_tree <- drop.tip(tree_structure, not_Xantho)
+
+Xantho_tree <- Xantho_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Xantho_tree <- Xantho_tree + 
+  layout_dendrogram() + 
+  ggtitle("Xanthomonadaceae") +
+  geom_tippoint(aes(color = Genus), size = 2) +
+  scale_color_manual(values = wesanderson::wes_palette("IsleofDogs1", 3 ,"discrete"))
+```
+
+
+```{r}
+Xantho_tree_boa <- gheatmap(Xantho_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Xanthoceae, BOA") 
+
+
+Xantho_tree_boa
+```
+
+```{r}
+Xantho_tree_boa_apo <- gheatmap(Xantho_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Xanthomonadaceae") +
+  theme(legend.position = "left")
+Xantho_tree_boa_apo
+```
+
+
+```{r}
+Xantho_tree_apo <- gheatmap(Xantho_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Xanthomonadaceae, APO")
+Xantho_tree_apo
+```
+
+
+
+## Bacillaceae
+
+
+```{r}
+Bacilli <- AUC_emmeans %>% 
+  filter(Family == "Bacillaceae") %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+```
+
+```{r}
+not_Bacilli <- Bacilli$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Bacilli_tree <- drop.tip(tree_structure, not_Bacilli)
+
+Bacilli_tree <- Bacilli_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Bacilli_tree <- Bacilli_tree + 
+  layout_dendrogram() + 
+  ggtitle("Bacillaceae") +
+  geom_tippoint(aes(color = Genus), size = 2) +
+  scale_color_manual(values = wesanderson::wes_palette("IsleofDogs1", 3 ,"discrete"))
+```
+
+
+```{r}
+Bacilli_tree_boa <- gheatmap(Bacilli_tree, 
+         tree_data_boa,
+         offset=0.16,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Bacilliceae, BOA") 
+
+
+Bacilli_tree_boa
+```
+
+```{r}
+Bacilli_tree_boa_apo <- gheatmap(Bacilli_tree_boa, 
+         tree_data_apo,
+         offset = 1.3,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Bacillaceae") +
+  theme(legend.position = "left")
+Bacilli_tree_boa_apo
+```
+
+
+```{r}
+Bacilli_tree_apo <- gheatmap(Bacilli_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Bacillaceae, APO")
+Bacilli_tree_apo
+```
+
+## Bacillales
+
+All Firmicutes in the dataset are Bacillales (Paenibacillus, Bacillus)
+
+```{r}
+Firmi <- AUC_emmeans %>% 
+  filter(Phylum == "Firmicutes") %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+```
+
+```{r}
+not_Firmi <- Firmi$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Firmi_tree <- drop.tip(tree_structure, not_Firmi)
+
+Firmi_tree <- Firmi_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Firmi_tree <- Firmi_tree + 
+  layout_dendrogram() + 
+  ggtitle("Bacillales") +
+  geom_tippoint(aes(color = Genus), size = 2) +
+  scale_color_manual(values = wesanderson::wes_palette("IsleofDogs1", 3 ,"discrete"))
+```
+
+
+```{r}
+Firmi_tree_boa <- gheatmap(Firmi_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Bacillales, BOA") 
+
+
+Firmi_tree_boa
+```
+
+```{r}
+Firmi_tree_boa_apo <- gheatmap(Firmi_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Bacillales") +
+  theme(legend.position = "left")
+Firmi_tree_boa_apo
+```
+
+
+```{r}
+Firmi_tree_apo <- gheatmap(Firmi_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Bacillales, APO")
+Firmi_tree_apo
+```
+
+
+## Nocardioidaceae
+
+
+```{r}
+Nocardio <- AUC_emmeans %>% filter(Family == "Nocardioidaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_Nocardio <- Nocardio$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Nocardio_tree <- drop.tip(tree_structure, not_Nocardio)
+
+Nocardio_tree <- Nocardio_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Nocardio_tree <- Nocardio_tree + 
+  layout_dendrogram() + 
+  ggtitle("Nocardio") +
+    geom_tippoint(aes(color = Genus)) +
+    scale_color_manual(values = wesanderson::wes_palette("GrandBudapest1", 2 ,"discrete"))
+```
+
+
+```{r}
+Nocardio_tree_boa <- gheatmap(Nocardio_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Nocardioceae, BOA") 
+
+
+Nocardio_tree_boa
+```
+
+```{r}
+Nocardio_tree_boa_apo <- gheatmap(Nocardio_tree_boa, 
+         tree_data_apo,
+         offset=1.8,
+         width=0.2,
+         colnames_angle = 0,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Nocardioidaceae") +
+  theme(legend.position = "left")
+Nocardio_tree_boa_apo
+```
+
+
+```{r}
+Nocardio_tree_apo <- gheatmap(Nocardio_tree, 
+         tree_data_apo,
+         offset=0.8,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Nocardioceae, APO")
+Nocardio_tree_apo
+```
+
+
+
+## Pseudomonadaceae
+
+
+```{r}
+Pseudom <- AUC_emmeans %>% filter(Family == "Pseudomonadaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_Pseudom <- Pseudom$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Pseudom_tree <- drop.tip(tree_structure, not_Pseudom)
+
+Pseudom_tree <- Pseudom_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Pseudom_tree <- Pseudom_tree + 
+  layout_dendrogram() + 
+  ggtitle("Pseudom") +
+    geom_tippoint(aes(color = Genus)) +
+    scale_color_manual(values = wesanderson::wes_palette("Moonrise2", 2 ,"discrete"))
+```
+
+
+```{r}
+Pseudom_tree_boa <- gheatmap(Pseudom_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames = FALSE,
+         colnames_angle = 0,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Pseudomceae, BOA") 
+
+
+Pseudom_tree_boa
+```
+
+```{r}
+Pseudom_tree_boa_apo <- gheatmap(Pseudom_tree_boa, 
+         tree_data_apo,
+         offset=1.4,
+         width=0.2,
+         colnames = FALSE,
+         colnames_angle = 0,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Pseudomonadaceae") +
+  theme(legend.position = "left")
+Pseudom_tree_boa_apo
+```
+
+
+
+## Alcaligenaceae
+
+```{r}
+Alcali <- AUC_emmeans %>% filter(Family == "Alcaligenaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_alcali <- Alcali$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Alcali_tree <- drop.tip(tree_structure, not_alcali)
+
+Alcali_tree <- Alcali_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Alcali_tree <- Alcali_tree + 
+  layout_dendrogram() + 
+  ggtitle("Alcaligenaceae") +
+    geom_tippoint(aes(color = Genus))
+```
+
+
+```{r}
+Alcali_tree_boa <- gheatmap(Alcali_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Alcaligenaceae, BOA") 
+
+
+Alcali_tree_boa
+```
+
+```{r}
+Alcali_tree_boa_apo <- gheatmap(Alcali_tree_boa, 
+         tree_data_apo,
+         offset=0.7,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Alcaligenaceae") +
+  theme(legend.position = "left")
+Alcali_tree_boa_apo
+```
+
+
+## Flavobacteriaceae
+
+
+```{r}
+Flavobacteriaceae <- AUC_emmeans %>% filter(Family == "Flavobacteriaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_flavo <- Flavobacteriaceae$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Flavobacteriaceae_tree <- drop.tip(tree_structure, not_flavo)
+```
+
+```{r}
+Flavobacteriaceae_tree <- Flavobacteriaceae_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Flavobacteriaceae_tree <- Flavobacteriaceae_tree + layout_dendrogram()
+```
+
+
+```{r}
+Flavobacteriaceae_tree_boa <- gheatmap(Flavobacteriaceae_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Flavobacteriaceae") +
+    geom_tippoint(aes(color = Genus)) +
+    ggthemes::scale_color_hc()
+Flavobacteriaceae_tree_boa_apo <- gheatmap(Flavobacteriaceae_tree_boa, 
+         tree_data_apo,
+         offset=0.8,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth")
+```
+```{r}
+Flavobacteriaceae_tree_boa_apo
+```
+
+# Family Trees
+
+```{r}
+(Rhizobia_tree_boa_apo + Firmi_tree_boa_apo +
+  plot_layout(guides = "collect")  &
+  theme(legend.position = "left") &
+  guides(fill =FALSE)) 
+```
+
+```{r}
+((Rhizobia_tree_boa_apo + Firmi_tree_boa_apo )/
+   (Pseudom_tree_boa_apo + Alcali_tree_boa_apo)) &
+  theme(legend.position = "bottom") &
+  guides(fill =FALSE)
+```
+
+
+## Less stringent subsets
+
+```{r}
+(Rhizobia_tree_boa_apo + Xantho_tree_boa_apo +
+   Microbacteria_tree_boa_apo + Firmi_tree_boa_apo) +
+  plot_annotation(tag_levels = c("A")) &
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5)) &
+  #plot_layout(guides = "collect")  &
+#  theme(legend.position = "left") &
+  guides(fill =FALSE) 
+```
+
+```{r}
+(Rhizobia_tree_boa_apo + Xantho_tree_boa_apo + Microbacteria_tree_boa_apo + Firmi_tree_boa_apo +
+  plot_layout(guides = "collect")  &
+  theme(legend.position = "left") &
+  guides(fill =FALSE))
+```
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
