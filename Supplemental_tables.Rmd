@@ -1,0 +1,69 @@
+---
+title: "Supplemental Tables for Plant-derived benzoxazinoids act as antibiotics and shape bacterial communities"
+author: "Niklas Schandry, Katharina Jandrasits, Ruben Garrido-Oter, Claude Becker"
+output:
+  pdf_document:
+    toc: true
+---
+
+\newpage
+
+```{r include=F, message=FALSE}
+library(magrittr)
+```
+
+# Table S1. Syncom strains
+
+```{r echo =F}
+readr::read_rds("files_publication/syncom_membership.rds") %>% 
+  dplyr::group_by(Syncom) %>% 
+  dplyr::arrange(Genus) %>% 
+  gt::gt() %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+# Table S2. PERMANOVA
+
+```{r echo=F}
+readr::read_rds("files_publication/TabS2_permanova_gt.rds") %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+# Table S3. ANOVA: observed taxa
+
+```{r echo=F}
+readr::read_rds("files_publication/TabS3_gt.rds") %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+# Table S4. Observed diversity means and pairwise comparisons
+
+```{r echo=F}
+readr::read_rds("files_publication/TabS4_gt.rds")  %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+# Table S5. ANOVA: Shannon Diversity
+
+```{r echo=F}
+readr::read_rds("files_publication/TabS5_gt.rds") %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+# Table S6. Shannon diversity means and pairwise comparisons
+
+```{r echo=F}
+readr::read_rds("files_publication/TabS6_gt.rds") %>% 
+  gt::as_latex()
+```
+

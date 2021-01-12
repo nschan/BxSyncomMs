@@ -15,9 +15,11 @@ output:
     toc: yes
     toc_float: yes
 ---
+
 # About
 
-This file documents the read processing for Schandry, et al., 2020
+This file documents the community analysis and figure generation for Schandry, et al., 2021, bioRxiv.
+Currently this document is subject to change.
 
 # Prepare session
 
@@ -29,6 +31,7 @@ library(phyloseq)
 library(patchwork)
 library(magrittr)
 library(ggnetwork)
+library(emmeans)
 require(vegan)
 ```
 
@@ -40,6 +43,14 @@ source("functions/fix_node_placement.R")
 source("functions/compare_conditions.R")
 source("functions/read_fasta.R")
 ```
+
+```{r}
+syncom_colors <- c("Random" = "#666699",
+                  "Tolerant" = "#9BCB40",
+                  "Mixed" = "#B6539F",
+                  "Sensitive" = "#FEE377")
+```
+
 
 # Data removal
 
@@ -1149,8 +1160,8 @@ bind_rows(centroids_random_scaled_per_timepoint,
   ggplot(aes(x = Timepoint, y = Total_dist)) +
   geom_col(aes(fill = Treatment), position = "dodge2") +
   facet_grid(~fct_relevel(Syncom, c("Random", "Tolerant", "Mixed","Sensitive"))) +
-  labs(y = "Distance from Control") +
-  scale_fill_manual(values = colors_centroids) +
+  labs(y = "Scaled centroid distance from control") +
+  ggthemes::scale_fill_few() +
   theme_bw() +
       theme(plot.title = element_text(family = "NimbusMon"),
         plot.subtitle =  element_text(family = "NimbusMon"),
@@ -1159,6 +1170,384 @@ bind_rows(centroids_random_scaled_per_timepoint,
         strip.text = element_text(family = "NimbusMon",face = "bold")) 
 ```
 
+```{r}
+lm_centroids <- bind_rows(centroids_random_scaled_per_timepoint,
+          centroids_tolerant_scaled_per_timepoint,
+          centroids_mixed_scaled_per_timepoint,
+          centroids_sensitive_scaled_per_timepoint) %>% 
+  #group_by(Syncom) %>% 
+  {lm(abs(Dist_from_Control) ~ Syncom*Treatment, data = .)}
+emmeans::emmeans(lm_centroids,~Syncom|Treatment) %>% 
+  #summary %>% 
+  pwpp() +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"))
+```
+
+
+# Fig S3
+
+## AUC vs relative Abundance
+
+```{r}
+strain_AUC <- AUC_emmeans %>%
+  filter(Treat.x %in% c("Control","50uM_APO","100uM_BOA")) %>%
+  mutate(Treatment = case_when(Treat.x == "Control" ~ Treat.x,
+                               Treat.x == "50uM_APO" ~ "APO",
+                               Treat.x == "100uM_BOA" ~ "BOA")) %>% 
+  dplyr::select(Strain, Treatment, AUC, estimate) %>%
+  group_by(Strain,Treatment) %>%
+  summarize(mean_AUC = mean(AUC, na.rm = T),
+            mean_rel_AUC = mean(estimate, na.rm = T)) %>%
+  ungroup  
+
+strain_relabund <- bind_rows(list(
+  phyl_mixed_rel_strain %>% psmelt(),
+  phyl_random_rel_strain %>% psmelt(),
+  phyl_tolerant_rel_strain %>% psmelt(),
+  phyl_sensitive_rel_strain %>% psmelt())) %>%
+  dplyr::select(Strain, Genus, Abundance, Treatment, Syncom) %>% 
+  separate(Syncom, into= c(NA, "Syncom")) %>% 
+  group_by(Strain, Genus,Treatment, Syncom) %>%
+  summarize(mean_rel_abund = mean(Abundance, na.rm =T )) %>% 
+  ungroup()
+
+strain_relabund_per_timepoint <- bind_rows(list(
+  phyl_mixed_rel_strain %>% psmelt(),
+  phyl_random_rel_strain %>% psmelt(),
+  phyl_tolerant_rel_strain %>% psmelt(),
+  phyl_sensitive_rel_strain %>% psmelt())) %>%
+  dplyr::select(Strain, Genus, Abundance, Treatment, Timepoint, Syncom) %>% 
+  separate(Syncom, into= c(NA, "Syncom")) %>% 
+  group_by(Strain, Genus, Treatment, Timepoint, Syncom) %>% 
+  summarize(mean_rel_abund = mean(Abundance, na.rm =T )) %>% 
+  ungroup()
+```
+
+### Figure
+
+```{r}
+left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom)) %>% 
+  ggplot(aes(x = mean_AUC, y = mean_rel_abund, color = Treatment, shape = Syncom)) +
+  geom_point() +
+  ggthemes::scale_color_few() +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("Relative abundance") +
+  ggtitle("Figure S3: AUC vs Relative abundance") +
+  NULL
+```
+
+Only for strains that are found in communities:
+
+```{r}
+left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
+  geom_point(colour = "black", size = 2) +
+  geom_point() +
+  facet_wrap(~Treatment) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("Relative abundance") +
+  ggtitle("Figure S3: AUC vs Relative abundance") +
+  NULL
+```
+
+```{r}
+left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
+  mutate(Syncom = fct_relevel(Syncom, c("Random","Tolerant","Mixed","Sensitive"))) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
+  geom_point(colour = "black", size = 2) +
+  geom_point() +
+  facet_grid(Syncom~Treatment) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("log10(rel. abundance)") +
+  ggtitle("AUC vs Relative abundance") +
+  NULL
+```
+
+
+
+
+```{r}
+left_join(strain_AUC, strain_relabund_per_timepoint,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
+  geom_point(colour = "black", size = 2) +
+  geom_point() +
+  facet_grid(Timepoint~Treatment) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("log10(rel. abundance)") +
+  ggtitle("Figure S3: AUC vs Relative abundance") +
+  NULL
+```
+
+## Delta 
+
+```{r}
+strain_AUC_deltas <- strain_AUC %>% 
+  group_by(Strain) %>% 
+  mutate(delta_AUC = mean_AUC - mean_AUC[Treatment == "Control"])
+strain_relabund_per_timepoint_deltas <- 
+  strain_relabund_per_timepoint %>% 
+  droplevels() %>% 
+  group_by(Strain, Timepoint, Syncom) %>%
+  mutate(delta_rel_abundance = mean_rel_abund - mean_rel_abund[Treatment == "Control"],
+         norm_d_rel_abundance = delta_rel_abundance / mean_rel_abund[Treatment == "Control"])
+
+left_join(strain_AUC_deltas, strain_relabund_per_timepoint_deltas,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), Treatment != "Control", mean_rel_abund != 0) %>%
+  ggplot(aes(x = delta_AUC, y = delta_rel_abundance, color = Syncom)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_point(colour = "black", size = 2) +
+  geom_point() +
+  facet_wrap(Timepoint~Treatment, scales = "free", ncol = 2) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste(Delta, " Area under the curve"))) +
+  ylab(expression(paste(Delta, " log10(rel. abundance)"))) +
+  ggtitle("Figure S3: AUC vs Relative abundance compared to control") +
+  NULL
+```
+
+### Delta all avg timepoints
+
+```{r}
+strain_relabund_delta <- strain_relabund %>% 
+  droplevels() %>% 
+  group_by(Strain, Syncom) %>%
+  mutate(delta_rel_abundance = mean_rel_abund - mean_rel_abund[Treatment == "Control"],
+         norm_d_rel_abundance = delta_rel_abundance / mean_rel_abund[Treatment == "Control"],
+         ratio_rel_abundance = mean_rel_abund / mean_rel_abund[Treatment == "Control"],) %>% 
+    group_by(Strain, Syncom, Treatment) %>%
+  mutate(rel_d_abundance = delta_rel_abundance / mean_rel_abund)
+
+left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), Treatment != "Control", mean_rel_abund != 0) %>%
+  ggplot(aes(x = delta_AUC, y = delta_rel_abundance, color = Syncom)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_point(colour = "black", size = 3.5) +
+  geom_point(size = 3) +
+  facet_wrap(~Treatment, scales = "free", ncol = 2) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste(Delta, " Area under the curve"))) +
+  ylab(expression(paste(Delta, " log10(rel. abundance)"))) +
+  ggtitle("Growth and abundance changes by treatment") +
+  NULL
+```
+
+```{r}
+treat_specific_strains <- strain_relabund_delta %>%
+  filter(is.infinite(norm_d_rel_abundance) | is.nan(norm_d_rel_abundance)) %>%
+  group_by(Strain) %>% 
+  mutate(Not_in_ctrl_but = case_when(mean_rel_abund > 0 ~ Treatment,
+                                     TRUE~"NA" )) %>%
+  filter(Not_in_ctrl_but != "NA")
+```
+
+
+```{r}
+(left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
+  geom_point(colour = "black", size = 3.5) +
+  geom_point(size = 3) +
+  facet_wrap(~Treatment)  +
+  scale_color_manual(values = c(syncom_colors) )+
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("log10(rel. abundance)") +
+  ggtitle("AUC vs Relative abundance") +
+  NULL) /
+(left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment),
+         !is.na(Syncom),
+         !is.na(mean_rel_abund),
+         Treatment != "Control",
+         mean_rel_abund != 0) %>%
+  ggplot(aes(x = delta_AUC, y = delta_rel_abundance, color = Syncom)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_point(colour = "black", size = 3.5) +
+  geom_point(size = 3) +
+  scale_color_manual(values = syncom_colors) +
+  facet_wrap(~Treatment, scales = "free", ncol = 2) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste(Delta, " Area under the curve"))) +
+  ylab(expression(paste(Delta, " rel. abundance"))) +
+  ggtitle("Growth and abundance changes by treatment") +
+  NULL) +
+  plot_layout(guides = 'collect')
+```
+
+#### Fig2 E
+
+```{r}
+left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment),
+         !is.na(Syncom),
+         !is.na(mean_rel_abund),
+         Treatment != "Control")  %>% 
+  ggplot(aes(x = delta_AUC, y = ratio_rel_abundance, color = Treatment)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 1)) +
+  geom_point(colour = "black", size = 3.5, alpha = 0.7) +
+  geom_point(size = 3, alpha = 0.7) +
+  ggthemes::scale_color_few() +
+  #scale_color_manual(values = syncom_colors)+
+  facet_wrap(fct_relevel(Syncom, c("Random", "Tolerant", "Mixed","Sensitive"))~., ncol = 2,scales = "free_y") +
+  #lims(y = c(-3.2,3.1)) +
+  #scale_y_continuous(labels = c("Inf",2,1,0,-1, 2,"-Inf"), breaks = c(3,2,1,0,-1,-2,-3)) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste(Delta, " Area under the curve (Treatment - Control)"))) +
+  ylab(expression(paste("ratio rel. abundance (Treatment / Control)"))) +
+  ggtitle("Growth and abundance changes by treatment") +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        text = element_text(family = "NimbusMon"),
+        strip.background = element_blank(),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold")) 
+```
+
+Changes in AUC and changes in rela abundance are not correlated
+
+```{r}
+left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment),
+         !is.na(Syncom),
+         !is.na(mean_rel_abund),
+         Treatment != "Control",
+         !is.na(mean_rel_AUC),
+         !is.na(ratio_rel_abundance) ,
+         !is.infinite(mean_rel_AUC),
+         !is.infinite(ratio_rel_abundance)) %>% 
+  #.$ratio_rel_abundance
+  split(interaction(.$Syncom, .$Treatment)) %>% 
+  map(~cor.test(x=.x$mean_rel_AUC, y=.x$ratio_rel_abundance, method = "pearson"))
+```
+
+
+```{r}
+strain_relabund_delta  %>% 
+  filter(Treatment != "Control") %>% 
+  pivot_wider(c("Strain","Syncom"), names_from = c("Treatment"),values_from = ratio_rel_abundance) %>% 
+  ggplot(aes(x = APO, y = BOA, color = Syncom)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_point(colour = "black", size = 3.5, alpha = 0.4) +
+  geom_point(size = 3, alpha = .4) +
+  scale_color_manual(values = syncom_colors)+
+  facet_wrap(fct_relevel(Syncom, c("Random", "Tolerant", "Mixed","Sensitive"))~., ncol = 2) +
+  #lims(y = c(-3.2,3.1)) +
+  #scale_y_continuous(labels = c("Inf",2,1,0,-1, 2,"-Inf"), breaks = c(3,2,1,0,-1,-2,-3)) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste("Ratio abdundances APO / Control"))) +
+  ylab(expression(paste("Ratio abundances BOA / Control"))) +
+  ggtitle("Growth and abundance changes by treatment") +
+  NULL
+```
+
+```{r}
+left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment),
+         !is.na(Syncom),
+         !is.na(mean_rel_abund),
+         Treatment != "Control")  %>% 
+  ggplot(aes(x = delta_AUC, y = ratio_rel_abundance, color = Syncom, shape = Treatment)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 1)) +
+  geom_point(colour = "black", size = 3.5) +
+  geom_point(size = 3) +
+  scale_color_manual(values = syncom_colors)+
+  facet_wrap(Genus~.,scales = "free_y") +
+  #lims(y = c(-3.2,3.1)) +
+  #scale_y_continuous(labels = c("Inf",2,1,0,-1, 2,"-Inf"), breaks = c(3,2,1,0,-1,-2,-3)) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste(Delta, " Area under the curve"))) +
+  ylab(expression(paste("ratio rel. abundance"))) +
+  ggtitle("Growth and abundance changes by treatment") +
+  NULL
+```
+
+```{r}
+(left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
+  geom_point(colour = "black", size = 3.5) +
+  geom_point(size = 3) +
+  facet_wrap(~Treatment) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("log10(rel. abundance)") +
+  ggtitle("AUC vs Relative abundance") +
+  NULL) /
+(left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment),
+         !is.na(Syncom),
+         !is.na(mean_rel_abund),
+         Treatment != "Control",
+         !is.nan(norm_d_rel_abundance),
+         !is.infinite(norm_d_rel_abundance)
+         ) %>%
+  ggplot(aes(x = delta_AUC, y = norm_d_rel_abundance, color = Syncom)) +
+  geom_vline(aes(xintercept = 0)) +
+  geom_hline(aes(yintercept = 0)) +
+  geom_point(colour = "black", size = 3.5) +
+  geom_point(size = 3) +
+  facet_wrap(~Treatment, scales = "free", ncol = 2) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(expression(paste(Delta, " Area under the curve"))) +
+  ylab(expression(paste("normalized\n",Delta, " rel. abundance"))) +
+  ggtitle("Growth and abundance changes by treatment") +
+  NULL) +
+  plot_layout(guides = 'collect')
+```
+
+
+```{r}
+left_join(strain_AUC, strain_relabund_per_timepoint,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_rel_AUC, y = log10(mean_rel_abund), color = Syncom), alpha = 0.8) +
+  geom_point(colour = "black", size = 2) +
+  geom_point() +
+  facet_grid(Timepoint~Treatment) +
+  scale_color_manual(values = syncom_colors) +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("relative area under the curve") +
+  ylab("log10(rel. abundance)") +
+  ggtitle("Figure S3: AUC vs Relative abundance") +
+  NULL
+```
+
+
+```{r}
+left_join(strain_AUC, strain_relabund_per_timepoint,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
+  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Timepoint, shape = Timepoint)) +
+  geom_point(colour = "black", size = 2) +
+  geom_point() +
+  facet_grid(Syncom~Treatment) +
+  ggthemes::scale_color_colorblind() +
+  theme_bw(base_family = "NimbusMon") +
+  xlab("Area under the curve") +
+  ylab("log10(rel. abundance)") +
+  ggtitle("Figure S3: AUC vs Relative abundance") +
+  NULL
+```
 
 # Alpha Diversity 
 
@@ -1171,12 +1560,11 @@ observed_random <- phyl_random_glom_strain %>%
   phyloseq::estimate_richness(measures = "Observed") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop"))
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
 
 observed_random_plot <- observed_random %>% 
   ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
@@ -1199,13 +1587,11 @@ observed_tolerant <- phyl_tolerant_glom_strain %>%
   phyloseq::estimate_richness(measures = "Observed") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>%
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop")) 
-
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
 
 observed_tolerant_plot <- observed_tolerant %>% 
   ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
@@ -1228,12 +1614,11 @@ observed_mixed <- phyl_mixed_glom_strain %>%
   phyloseq::estimate_richness(measures = "Observed") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop"))
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
 
 observed_mixed_plot <- observed_mixed %>% 
   ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
@@ -1256,12 +1641,11 @@ observed_sensitive <- phyl_sensitive_glom_strain %>%
   phyloseq::estimate_richness(measures = "Observed") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop"))
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
 
 observed_sensitive_plot <- observed_sensitive %>% 
   ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
@@ -1566,12 +1950,11 @@ shannon_random <- phyl_random_glom_strain %>%
   phyloseq::estimate_richness(measures = "Shannon") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop"))
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
 
 shannon_random_plot <- shannon_random %>% 
   ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
@@ -1596,12 +1979,11 @@ shannon_tolerant <- phyl_tolerant_glom_strain %>%
   phyloseq::estimate_richness(measures = "Shannon") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop")) 
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
 
 
 shannon_tolerant_plot <- shannon_tolerant %>% 
@@ -1627,12 +2009,11 @@ shannon_mixed <- phyl_mixed_glom_strain %>%
   phyloseq::estimate_richness(measures = "Shannon") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop"))
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
 
 shannon_mixed_plot <- shannon_mixed %>% 
   ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
@@ -1657,12 +2038,11 @@ shannon_sensitive <- phyl_sensitive_glom_strain %>%
   phyloseq::estimate_richness(measures = "Shannon") %>% 
   rownames_to_column("sample") %>% 
   separate(sample,
-           c("Type", "Assembly","Treatment", "drop", "drop2", "Rep", "Timepoint"),
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
            sep = "_") %>% 
   mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
                                TRUE ~ Treatment)) %>% 
-  mutate(Syncom = paste(Type, Assembly, sep = "_")) %>% 
-  dplyr::select(-contains("drop"))
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
 
 shannon_sensitive_plot <- shannon_sensitive %>% 
   ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
@@ -2066,47 +2446,6 @@ shannon_all_cld %>%
     locations = gt::cells_column_labels(
       "Group")) %>% 
   write_rds("TabS4_gt.rds")
-```
-
-# Fig S3
-
-## AUC vs relative Abundance
-
-```{r}
-strain_AUC <- AUC_emmeans %>%
-  filter(Treat.x %in% c("Control","50uM_APO","100uM_BOA")) %>%
-  mutate(Treatment = case_when(Treat.x == "Control" ~ Treat.x,
-                               Treat.x == "50uM_APO" ~ "APO",
-                               Treat.x == "100uM_BOA" ~ "BOA")) %>% 
-  dplyr::select(Strain, Treatment, AUC) %>%
-  group_by(Strain,Treatment) %>%
-  summarize(mean_AUC = mean(AUC, na.rm = T)) %>%
-  ungroup  
-
-strain_relabund <- bind_rows(list(
-  phyl_mixed_rel_strain %>% psmelt(),
-  phyl_random_rel_strain %>% psmelt(),
-  phyl_tolerant_rel_strain %>% psmelt(),
-  phyl_sensitive_rel_strain %>% psmelt())) %>%
-  dplyr::select(Strain, Genus, Abundance, Treatment, Syncom) %>% 
-  group_by(Strain, Genus,Treatment, Syncom) %>% 
-  summarize(mean_rel_abund = mean(Abundance, na.rm =T )) %>% 
-  ungroup()
-```
-
-### Figure
-
-```{r}
-left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom)) %>% 
-  ggplot(aes(x = mean_AUC, y = mean_rel_abund, color = Treatment, shape = Syncom)) +
-  geom_point() +
-  ggthemes::scale_color_few() +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("Relative abundance") +
-  ggtitle("Figure S3: AUC vs Relative abundance") +
-  NULL
 ```
 
 
@@ -2588,6 +2927,72 @@ relabund_sensitive <- phyl_sensitive_rel_strain %>%
         legend.position = "bottom") 
 ```
 
+### Correlation community l2fc with growth assays
+
+```{r}
+fold_changes_communities <- bind_rows(list(
+       APO_DMSO_sensitive %>% mutate(Comparison = "APO / Control", Syncom = "Sensitive"),
+       BOA_DMSO_sensitive %>% mutate(Comparison = "BOA / Control", Syncom = "Sensitive"),
+       APO_DMSO_tolerant %>% mutate(Comparison = "APO / Control", Syncom = "Tolerant"),
+       BOA_DMSO_tolerant %>% mutate(Comparison = "BOA / Control", Syncom = "Tolerant"),
+       APO_DMSO_mixed %>% mutate(Comparison = "APO / Control", Syncom = "Mixed"),
+       BOA_DMSO_mixed %>% mutate(Comparison = "BOA / Control", Syncom = "Mixed"),
+       APO_DMSO_random %>% mutate(Comparison = "APO / Control", Syncom = "Random"),
+       BOA_DMSO_random %>% mutate(Comparison = "BOA / Control", Syncom = "Random")))
+
+fold_changes_communities
+
+all_strains <- bind_rows(list(phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain, Syncom),
+phyl_random_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Genus, Strain, Syncom),
+  phyl_sensitive_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Genus, Strain, Syncom),
+  phyl_mixed_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain, Syncom))) %>% 
+  separate(Syncom, into = c(NA, "Syncom"), sep ="_") 
+
+strain_AUC_rel <- AUC_emmeans %>%
+  filter(Treat.x %in% c("Control","50uM_APO","100uM_BOA")) %>%
+  mutate(Treatment = case_when(Treat.x == "Control" ~ Treat.x,
+                               Treat.x == "50uM_APO" ~ "APO",
+                               Treat.x == "100uM_BOA" ~ "BOA")) %>% 
+  dplyr::select(Strain, Treatment, estimate) %>%
+  group_by(Strain,Treatment) %>%
+  summarize(mean_rel_AUC = mean(estimate, na.rm = T)) %>%
+  ungroup  %>% 
+  unique
+```
+
+```{r}
+fold_changes_communities %>%
+  separate(Comparison, c("Treatment", NA), sep = " / ") %>% 
+  left_join(all_strains, by = c("Genus","Syncom")) %>% 
+  left_join(strain_AUC_rel, by = c("Strain", "Treatment")) %>% 
+  unique() %>% 
+  filter(Treatment == "APO") %>% 
+  droplevels() %>%
+  {cor(x = .$log2FoldChange, y=.$mean_rel_AUC)}
+```
+
+```{r}
+fold_changes_communities %>%
+  separate(Comparison, c("Treatment", NA), sep = " / ") %>% 
+  left_join(all_strains, by = c("Genus","Syncom")) %>% 
+  left_join(strain_AUC_rel, by = c("Strain", "Treatment")) %>% 
+  unique() %>% 
+  filter(Treatment == "APO") %>% 
+  droplevels() %>% 
+  ggplot(aes(x = log2FoldChange, y = mean_rel_AUC)) +
+  geom_point() +
+  facet_grid(Syncom ~ Timepoint)
+```
+
+
 ## Overlap Random and Tolerant
 
 ```{r}
@@ -2674,237 +3079,6 @@ relabund_random_overlap_tol /
         strip.background = element_rect(fill = "white"),
         legend.position = "bottom")
 ```
-
-#### Explore deeper
-
-```{r}
-relabund_random_overlap_tol_fac <- phyl_random_rel_strain %>% 
-  psmelt() %>%
-  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
-         In_Both = case_when(Strain %in% (phyl_tolerant_rel_strain %>% 
-  psmelt() %>% .$Strain) ~ "Yes",
-  TRUE ~ "No")) %>% 
-  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
-  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
-  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
-  theme_bw() + 
-  scale_y_continuous(n.breaks = 4) +
-  ggtitle(paste("Random: Strains overlapping with Tolerant")) +
-  ggthemes::scale_color_few() +
-  facet_grid(rows = vars(In_Both), cols = vars(Genus_Strain), scales = "free")
-relabund_tolerant_overlap_rand_fac <- phyl_tolerant_rel_strain %>% 
-  psmelt() %>%
-  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
-         In_Both = case_when(Strain %in% (phyl_random_rel_strain %>% 
-  psmelt() %>% .$Strain) ~ "Yes",
-  TRUE ~ "No")) %>% 
-  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
-  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
-  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
-  theme_bw() + 
-  scale_y_continuous(n.breaks = 4) +
-  ggtitle(paste("Tolerant: Strains overlapping with Random")) +
-  ggthemes::scale_color_few() +
-  facet_grid(rows = vars(In_Both), cols = vars(Genus_Strain), scales = "free")
-```
-
-```{r}
-relabund_random_overlap_tol_fac /
-  relabund_tolerant_overlap_rand_fac +
-  plot_layout(guides = "collect") &
-    theme(text = element_text(family ="NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")
-```
-
-#### Back to networks
-
-```{r}
-phyl_tol_corr_96APO <- phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>% 
-  igraph::graph_from_data_frame() %>% 
-  fortify() 
-phyl_tol_corr_96APO %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r, size = abs(r)), curvature = 0.2) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant at 96h, APO") +
-  scale_color_viridis_c(option = "C") +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon")) 
-```
-```{r}
-phyl_tol_corr_96BOA <- phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99) %>% 
-  igraph::graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(arrow.gap =F) 
-phyl_tol_corr_96BOA %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant at 96h, BOA") +
-  scale_color_viridis_c(option = "C") +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon")) 
-```
-
-```{r}
-tol_APO_BOA_96 <- bind_rows(list(phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>%
-    mutate(Treatment = "APO") ,
-phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99) %>% 
-  mutate(Treatment = "BOA")) )%>% 
-  igraph::graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(arrow.gap =F) 
-tol_APO_BOA_96 %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant at 96h" ) +
-  scale_color_viridis_c(option = "C") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon")) 
-```
-```{r}
-rand_APO_BOA_96 <- bind_rows(list(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>%
-    mutate(Treatment = "APO") ,
-phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99) %>% 
-  mutate(Treatment = "BOA")) )%>% 
-  igraph::graph_from_data_frame() %>% 
-  fortify() 
-rand_APO_BOA_96 %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Random at 96h" ) +
-  scale_color_viridis_c(option = "C") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon")) 
-```
-
-```{r}
-(rand_APO_BOA_96 %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Random at 96h" ) +
-  scale_color_viridis_c(option = "C") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))) /
-  (tol_APO_BOA_96 %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant at 96h" ) +
-  scale_color_viridis_c(option = "C") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon")))
-```
-
-#### Compare APO at 96h
-
-```{r}
-APO_corrs_rand_tol96 <-
-  bind_rows(list(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>%
-    mutate(Syncom = "Random") ,
-phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>% 
-  mutate(Syncom = "Tolerant")) )%>% 
-  igraph::graph_from_data_frame() %>% 
-  fortify() 
-```
-
-```{r}
-APO_corrs_rand_tol96 %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.3) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in APO at 96h" ) +
-  scale_color_viridis_c(option = "C") +
-  facet_wrap(~Syncom) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-
-##### extended network
-
-```{r}
-overlay_random_tol_apo_96 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>% 
-  mutate(Syncom = "Tolerant"),treat1 = "Random", treat2 = "Tolerant", cutoff = 0.2, return_corrs = T, detailed =)
-```
-
-
-```{r}
-set.seed(341)
-overlay_random_tol_apo_96 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in APO at 96h, min correlation = 0.2" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-
-```{r}
-overlay_random_tol_apo_96_cutoff05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99) %>% 
-  mutate(Syncom = "Tolerant"),treat1 = "Random", treat2 = "Tolerant", cutoff = 0.5, return_corrs = T, detailed =T)
-```
-
-
-```{r}
-set.seed(211)
-overlay_random_tol_apo_96_cutoff05 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in APO at 96h, min correlation = 0.5" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-
 
 # Fig 4
 
@@ -3468,991 +3642,11 @@ FigS4B <- plot_dat %>%
   #      y = c(-0.1,1.1)) +
   NULL
 ```
+
 ```{r}
 FigS4A / FigS4B +
   plot_annotation(title = "Fig S4",tag_levels = "A") +
   plot_layout(guides = 'collect') &
   theme(text=element_text(family = "NimbusMon"), 
         legend.position = "bottom")
-```
-
-
-
-
-## Pearson
-
-```{r}
-overlay_random_tol_apo_96_pearson_02 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),treat1 = "Random", treat2 = "Tolerant", cutoff = 0.2, return_corrs = T, detailed =T)
-```
-
-```{r}
-overlay_random_tol_apo_96_pearson_02 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in APO at 96h, min pearson correlation = 0.2" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-```{r}
-overlay_random_tol_apo_96_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),treat1 = "Random", treat2 = "Tolerant", cutoff = 0.5, return_corrs = T, detailed =T)
-```
-
-```{r}
-overlay_random_tol_apo_96_pearson_05 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in APO at 96h, min pearson correlation = 0.5" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-
-```{r}
-overlay_random_tol_boa_96_pearson_02 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random",
-  treat2 = "Tolerant",
-  cutoff = 0.2, return_corrs = T, detailed =T)
-```
-
-```{r}
-overlay_random_tol_boa_96_pearson_02 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in BOA at 96h, min pearson correlation = 0.2" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-```{r}
-overlay_random_tol_boa_96_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random",
-  treat2 = "Tolerant",
-  cutoff = 0.5, return_corrs = T, detailed =T)
-```
-
-```{r}
-overlay_random_tol_boa_96_pearson_05 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in BOA at 96h, min pearson correlation = 0.5" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-
-##### BOA and APO side by side
-
-###### 24h 
-
-```{r}
-overlay_random_tol_apo_24_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),treat1 = "Random", treat2 = "Tolerant", cutoff = 0.5, return_corrs = T, detailed =T)
-
-overlay_random_tol_boa_24_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random",
-  treat2 = "Tolerant",
-  cutoff = 0.5, return_corrs = T, detailed =T)
-
-
-early_networks <- rbind(overlay_random_tol_apo_24_pearson_05 %>%
-                         mutate(Treatment = "BOA"),
-      overlay_random_tol_boa_24_pearson_05 %>%
-        mutate(Treatment = "APO"))
-set.seed(2354)
-early_networks_placed <-  early_networks %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_dh(),
-                        arrow.gap = F) %>% 
-  distinct()
-
-placed_edges <- early_networks_placed %>% filter(!is.na(Treatment))
-
-placed_nodes <- early_networks_placed %>% filter(is.na(Treatment))
-
-
-early_networks_placed_fixed <- bind_rows(
-  lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         xend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         yend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-  placed_edges) %>% 
-  distinct()
-```
-
-```{r}
-early_networks_placed_fixed %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither")) %>% 
-  # mutate(edge = case_when(edge %in% c("Random Positive", "Tolerant Positive") ~ "Positive",
-  #                         edge %in% c("Random Negative", "Tolerant Negative") ~ "Negative",
-  #                         TRUE ~ edge)) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel(aes(label = Genus_Strain)) +
-  geom_nodelabel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 24h") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")
-```
-###### 48h 
-
-```{r}
-overlay_random_tol_apo_48_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "48h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "48h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),treat1 = "Random", treat2 = "Tolerant", cutoff = 0.5, return_corrs = T, detailed =T)
-
-overlay_random_tol_boa_48_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "48h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "48h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random",
-  treat2 = "Tolerant",
-  cutoff = 0.5, return_corrs = T, detailed =T)
-
-
-midearly_networks <- rbind(overlay_random_tol_apo_48_pearson_05 %>%
-                         mutate(Treatment = "BOA"),
-      overlay_random_tol_boa_48_pearson_05 %>%
-        mutate(Treatment = "APO"))
-set.seed(2354)
-midearly_networks_placed <-  midearly_networks %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_dh(),
-                        arrow.gap = F) %>% 
-  distinct()
-
-placed_edges <- midearly_networks_placed %>% filter(!is.na(Treatment))
-
-placed_nodes <- midearly_networks_placed %>% filter(is.na(Treatment))
-
-
-midearly_networks_placed_fixed <- bind_rows(
-  lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         xend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         yend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-  placed_edges) %>% 
-  distinct()
-```
-
-```{r}
-midearly_networks_placed_fixed %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither")) %>% 
-  # mutate(edge = case_when(edge %in% c("Random Positive", "Tolerant Positive") ~ "Positive",
-  #                         edge %in% c("Random Negative", "Tolerant Negative") ~ "Negative",
-  #                         TRUE ~ edge)) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel(aes(label = Genus_Strain)) +
-  geom_nodelabel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 48h") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")
-```
-
-###### 72h 
-
-```{r}
-overlay_random_tol_apo_72_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "72h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "72h") %>%
-  create_corrnet("Treatment", "APO", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random", 
-  treat2 = "Tolerant",
-  cutoff = 0.5,
-  return_corrs = T,
-  detailed =T)
-
-overlay_random_tol_boa_72_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "72h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "72h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random",
-  treat2 = "Tolerant",
-  cutoff = 0.5,
-  return_corrs = T,
-  detailed =T)
-
-
-midlate_networks <- rbind(overlay_random_tol_apo_72_pearson_05 %>%
-                         mutate(Treatment = "BOA"),
-      overlay_random_tol_boa_72_pearson_05 %>%
-        mutate(Treatment = "APO"))
-set.seed(2354)
-midlate_networks_placed <-  midlate_networks %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_dh(),
-                        arrow.gap = F) %>% 
-  distinct()
-
-placed_edges <- midlate_networks_placed %>% filter(!is.na(Treatment))
-
-placed_nodes <- midlate_networks_placed %>% filter(is.na(Treatment))
-
-
-midlate_networks_placed_fixed <- bind_rows(
-  lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         xend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         yend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-  placed_edges) %>% 
-  distinct()
-```
-
-```{r}
-midlate_networks_placed_fixed %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither")) %>% 
-  # mutate(edge = case_when(edge %in% c("Random Positive", "Tolerant Positive") ~ "Positive",
-  #                         edge %in% c("Random Negative", "Tolerant Negative") ~ "Negative",
-  #                         TRUE ~ edge)) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel(aes(label = Genus_Strain)) +
-  geom_nodelabel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 48h") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")
-```
-
-###### 96h
-```{r}
-overlay_random_tol_boa_96_pearson_05 <- overlay_corrnet(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>%
-    mutate(Syncom = "Random"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment", "BOA", 99, method = "pearson") %>% 
-  mutate(Syncom = "Tolerant"),
-  treat1 = "Random",
-  treat2 = "Tolerant",
-  cutoff = 0.5, return_corrs = T, detailed =T)
-
-overlay_random_tol_boa_96_pearson_05 %>% 
-    dplyr::select(x,y, edge) %>% 
-    igraph::graph_from_data_frame() %>%
-    ggnetwork::ggnetwork(arrow.gap =FALSE) %>% 
-    ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), curvature = 0.15) +
-  geom_nodes() +
-  geom_nodelabel_repel(aes(label = name)) +
-  ggtitle("Tolerant and Random in BOA at 96h, min pearson correlation = 0.5" ) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"))
-
-
-late_networks <- rbind(overlay_random_tol_boa_96_pearson_05 %>%
-                         mutate(Treatment = "BOA"),
-      overlay_random_tol_apo_96_pearson_05 %>%
-        mutate(Treatment = "APO"))
-set.seed(2354)
-late_networks_placed <-  late_networks %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_dh(),
-                        arrow.gap = F) %>% 
-  distinct()
-
-placed_edges <- late_networks_placed %>% filter(!is.na(Treatment))
-
-placed_nodes <- late_networks_placed %>% filter(is.na(Treatment))
-
-
-late_networks_placed_fixed <- bind_rows(
-  lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         xend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Treatment = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %$%
-                                         yend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Treatment))}),
-  placed_edges) %>% 
-  distinct()
-```
-
-```{r}
-late_networks_placed_fixed %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither"),
-         edge = case_when(edge %in% c("Random Positive", "Tolerant Positive") ~ "Positive",
-                          edge %in% c("Random Negative", "Tolerant Negative") ~ "Negative",
-                          TRUE ~ edge)) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel(aes(label = Genus_Strain)) +
-  geom_nodelabel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 96h") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")
-```
-
-###### All timepoints
-
-```{r}
-tol_rand_boa_apo_all <- rbind(
-  overlay_random_tol_apo_24_pearson_05 %>%
-        mutate(Treatment = "APO",
-              Timepoint = "24h"),
-  overlay_random_tol_boa_24_pearson_05 %>%
-        mutate(Treatment = "BOA",
-               Timepoint = "24h"),
-  overlay_random_tol_apo_48_pearson_05 %>%
-        mutate(Treatment = "APO",
-              Timepoint = "48h"),
-  overlay_random_tol_boa_48_pearson_05 %>%
-        mutate(Treatment = "BOA",
-               Timepoint = "48h"),
-  overlay_random_tol_apo_72_pearson_05 %>%
-        mutate(Treatment = "APO",
-               Timepoint = "72h"),
-  overlay_random_tol_boa_72_pearson_05 %>%
-        mutate(Treatment = "BOA",
-               Timepoint = "72h"),
-  overlay_random_tol_apo_96_pearson_05 %>%
-        mutate(Treatment = "APO",
-               Timepoint = "96h"),
-  overlay_random_tol_boa_96_pearson_05 %>%
-        mutate(Treatment = "BOA",
-               Timepoint = "96h"))
-set.seed(135)
-tol_rand_boa_apo_all_placed <- tol_rand_boa_apo_all %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_fr(),
-                        arrow.gap = F) %>% 
-  distinct()
-
-### The harmonizer
-
-placed_edges <- tol_rand_boa_apo_all_placed %>% filter(!is.na(Treatment))
-
-placed_nodes <- tol_rand_boa_apo_all_placed %>% filter(is.na(Treatment))
-
-placed_nodes <- bind_rows(bind_rows(
-  lapply(list("24h", "48h", "72h" ,"96h"), function(tp){
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Timepoint = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         xend) ~ tp,
-                              TRUE ~ Timepoint),
-         Treatment = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         xend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Timepoint)) %>% 
-  filter(!is.na(Treatment))})
-    })),
-bind_rows(
-  lapply(list("24h", "48h", "72h" ,"96h"), function(tp){
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Timepoint = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         yend) ~ tp,
-                              TRUE ~ Timepoint),
-         Treatment = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Timepoint == tp) %$%
-                                         yend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Timepoint)) %>% 
-  filter(!is.na(Treatment))})
-    }))
-) %>% distinct()
-
-
-
-
-tol_rand_boa_apo_all_placed_fixed <- bind_rows(placed_nodes,
-  placed_edges) %>% 
-  distinct()
-
-```
-
-```{r}
-tol_rand_boa_apo_all_placed_fixed  %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither")) %>% 
-  # mutate(edge = case_when(edge %in% c("Random Positive", "Tolerant Positive") ~ "Positive",
-  #                         edge %in% c("Random Negative", "Tolerant Negative") ~ "Negative",
-  #                         TRUE ~ edge)) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x*100, y = y*100, xend = xend*100, yend = yend*100)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel_repel(aes(label = Genus_Strain), seed = 342, size= 2) +
-  geom_nodelabel_repel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3, seed=342, size= 2) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 48h") +
-  facet_grid(Timepoint~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")
-```
-
-```{r}
-(tol_rand_boa_apo_all_placed_fixed  %>% 
-  filter(Timepoint == "96h") %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither")) %>% 
-  # mutate(edge = case_when(edge %in% c("Random Positive", "Tolerant Positive") ~ "Positive",
-  #                         edge %in% c("Random Negative", "Tolerant Negative") ~ "Negative",
-  #                         TRUE ~ edge)) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel(aes(label = Genus_Strain)) +
-  geom_nodelabel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 96h") +
-  facet_grid(Timepoint~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom")) /
- ( late_networks_placed_fixed %>% 
-  mutate(Syncom = case_when(name %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               name %in% tol_strains ~ "Tolerant",
-                               name %in% rand_strains ~ "Random",
-                               TRUE ~"Neither")) %>% 
-  left_join(rand_tol_genusstrain %>% mutate(name = Strain), by = c("name")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = edge), size = 1, curvature = 0.15) +
-  geom_nodes(size = 1) +
-  geom_nodelabel(aes(label = Genus_Strain)) +
-  geom_nodelabel(aes(label = Genus_Strain, fill = Syncom), alpha = 0.3) +
-  #geom_nodetext(aes(label = Genus_Strain)) +
-  #geom_nodetext_repel(aes(label = Genus_Strain, color = Syncom)) +
-  ggtitle("Tolerant and random at 96h") +
-  facet_wrap(~Treatment) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom"))
-  
-```
-
-### Not overlayed 96h
-
-```{r}
-tol_96h_apo_boa <- bind_rows(
-  list(
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "APO",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>%
-    mutate(Treatment = "APO",
-           Syncom = "Tolerant"),
-phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "BOA",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>% 
-  mutate(Treatment = "BOA",
-          Syncom = "Tolerant")))
-rand_96h_apo_boa <- bind_rows(list(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "APO",
-                 99,
-                 method = "pearson",
-                 OTUcol = "Genus") %>%
-    mutate(Treatment = "APO",
-           Syncom = "Random") ,
-phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "BOA",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>% 
-  mutate(Treatment = "BOA",
-           Syncom = "Random"))) 
-
-tol_rand_96h_corrs <- rbind(tol_96h_apo_boa, rand_96h_apo_boa) %>% 
-  filter(abs(r) > 0.5)
-```
-
-```{r}
-# Place network
-tol_rand_96h_corrs_placed <- tol_rand_96h_corrs  %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_fr(),
-                        arrow.gap = F) %>% 
-  distinct()
-
-# Fix display
-
-placed_edges <- tol_rand_96h_corrs_placed %>% filter(!is.na(Treatment))
-
-placed_nodes <- tol_rand_96h_corrs_placed %>% filter(is.na(Treatment))
-
-placed_nodes <- bind_rows(bind_rows(
-  lapply(list("Tolerant", "Random"), function(syncom){
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Syncom = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         xend) ~ syncom,
-                              TRUE ~ Syncom),
-         Treatment = case_when(x %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         x,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         xend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Syncom)) %>% 
-  filter(!is.na(Treatment))})
-    })),
-bind_rows(
-  lapply(list("Tolerant", "Random"), function(syncom){
-    lapply(list("APO", "BOA"), function(treat){
-  placed_nodes %>% 
-  mutate(Syncom = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         yend) ~ syncom,
-                              TRUE ~ Syncom),
-         Treatment = case_when(y %in% c(placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         y,
-                                         placed_edges %>% 
-                                         filter(Treatment == treat) %>% 
-                                         filter(Syncom == syncom) %$%
-                                         yend) ~ treat,
-                              TRUE ~ Treatment)) %>% 
-  filter(!is.na(Syncom)) %>% 
-  filter(!is.na(Treatment))})
-    }))
-) %>% distinct()
-
-
-
-
-tol_rand_96h_corrs_placed_fixed <- bind_rows(placed_nodes,
-  placed_edges) %>% 
-  distinct()
-```
-
-```{r}
-tol_rand_96h_corrs_placed_fixed %>%
-  mutate(Genus = name) %>%  
-  left_join(rbind(tolerant_strains_genus, random_strains_genus),
-            by = c("Syncom","Genus")) %>% 
-  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               Strain %in% tol_strains ~ "Only one",
-                               Strain %in% rand_strains ~ "Only one",
-                               TRUE ~"Neither")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-    geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
-  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
-  ggtitle("Tolerant and BOA at 96h",
-          sub = "pearson > 0.5") +
-  scale_color_viridis_c(option = "C") +
-  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
-  facet_grid(Treatment~Syncom) +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white")) +
-  # lims(x = c(-0.1,1.1),
-  #      y = c(-0.1,1.1)) +
-  NULL
-```
-
-### Not overlayed 96 and 24h
-
-```{r}
-tolerant_strains_genus <- phyl_tolerant_rel_strain %>% 
-  psmelt() %>%
-  dplyr::select(Genus, Strain) %>%
-  mutate(Syncom = "Tolerant") %>% 
-  distinct()
-random_strains_genus <- phyl_random_rel_strain %>% 
-  psmelt() %>% 
-  dplyr::select(Genus, Strain) %>%
-  mutate(Syncom = "Random") %>% 
-  distinct()
-```
-
-### Pearson: Tolerant and Random early and late
-
-```{r}
-tol_apo_boa_24_96 <- bind_rows(
-  list(
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "APO",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>%
-    mutate(Treatment = "APO",
-           Syncom = "Tolerant",
-           Timepoint = "96h"),
-  phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment",
-                 "APO",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>%
-    mutate(Treatment = "APO",
-           Syncom = "Tolerant",
-           Timepoint = "24h"),
-phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "BOA",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>% 
-  mutate(Treatment = "BOA",
-         Timepoint = "96h",
-          Syncom = "Tolerant"),
-phyl_tolerant_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment",
-                 "BOA",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>% 
-  mutate(Treatment = "BOA",
-         Timepoint = "24h",
-          Syncom = "Tolerant")))
-
-rand_apo_boa_24_96 <- bind_rows(list(phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "APO",
-                 99,
-                 method = "pearson",
-                 OTUcol = "Genus") %>%
-    mutate(Treatment = "APO",
-           Timepoint = "96h",
-           Syncom = "Random") ,
-  phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment",
-                 "APO",
-                 99,
-                 method = "pearson",
-                 OTUcol = "Genus") %>%
-    mutate(Treatment = "APO",
-           Timepoint = "24h",
-           Syncom = "Random") ,
-phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "96h") %>%
-  create_corrnet("Treatment",
-                 "BOA",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>% 
-  mutate(Treatment = "BOA",
-         Timepoint = "96h",
-           Syncom = "Random"),
-phyl_random_glom_strain %>% 
-  subset_samples(Timepoint == "24h") %>%
-  create_corrnet("Treatment",
-                 "BOA",
-                 99, 
-                 method = "pearson",
-                 OTUcol = "Genus") %>% 
-  mutate(Treatment = "BOA",
-         Timepoint = "24h",
-           Syncom = "Random")
-)) 
-
-tol_rand_apo_boa_24_96_corrs_p <- rbind(tol_apo_boa_24_96, rand_apo_boa_24_96) %>% 
-  filter(abs(r) > 0.5)
-```
-
-
-```{r}
-# Set seed for reproducibility of layout
-set.seed(23546)
-tol_rand_apo_boa_24_96_corrs_p  %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_fr(),
-                        arrow.gap = F) %>% 
-  distinct() %>% 
-  fix_node_placement() %>% 
-  mutate(Genus = name) %>%  
-  left_join(rbind(tolerant_strains_genus, random_strains_genus),
-            by = c("Syncom","Genus")) %>% 
-  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               Strain %in% tol_strains ~ "Only one",
-                               Strain %in% rand_strains ~ "Only one",
-                               TRUE ~"Neither")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-    geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
-  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
-  ggtitle("Tolerant and Random",
-          sub = "pearson > 0.5") +
-  scale_color_viridis_c(option = "C") +
-  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
-  facet_grid(Syncom~interaction(Timepoint,Treatment), scales = "free") +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        panel.border = element_rect(fill = NA)) +
-  # lims(x = c(-0.1,1.1),
-  #      y = c(-0.1,1.1)) +
-  NULL
-```
-
-```{r}
-# Set seed for reproducibility of layout
-set.seed(23546)
-tol_rand_apo_boa_24_96_corrs_p  %>% 
-  graph_from_data_frame() %>% 
-  ggnetwork::ggnetwork(layout = igraph::with_fr(),
-                        arrow.gap = F) %>% 
-  distinct() %>% 
-  fix_node_placement() %>% 
-  mutate(Genus = name) %>%  
-  left_join(rbind(tolerant_strains_genus, random_strains_genus),
-            by = c("Syncom","Genus")) %>% 
-  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
-                               Strain %in% tol_strains ~ "Only one",
-                               Strain %in% rand_strains ~ "Only one",
-                               TRUE ~"Neither")) %>% 
-  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
-  geom_nodes() +
-    geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
-  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
-  ggtitle("Tolerant and Random",
-          sub = "pearson > 0.5") +
-  scale_color_viridis_c(option = "C") +
-  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
-  facet_grid(Syncom~interaction(Treatment, Timepoint), scales = "free") +
-  theme_blank() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        panel.border = element_rect(fill = NA)) +
-  # lims(x = c(-0.1,1.1),
-  #      y = c(-0.1,1.1)) +
-  NULL
 ```
