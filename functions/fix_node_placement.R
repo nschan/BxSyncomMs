@@ -119,4 +119,78 @@ bind_rows(placed_nodes,
   distinct()
 }
 
+## No timepoint version
+
+fix_node_placement_no_time <- function(network = NULL,
+                               Syncoms = list("Tolerant", "Random"),
+                               Treatments = list("APO", "BOA")) {
+  
+  # Extract edges and nodes  
+  placed_edges <- network %>% filter(!is.na(Treatment))
+  placed_nodes <- network %>% filter(is.na(Treatment))
+  
+  # The below works by comparing every node (x and y mapping) with the ends of the edges.
+  # This requires
+  placed_nodes <- bind_rows(
+    bind_rows(
+      lapply(Syncoms, function(syncom){
+        lapply(Treatments, function(treat){
+            placed_nodes %>% 
+              mutate(Syncom = case_when(x %in% c(placed_edges %>% 
+                                                   filter(Treatment == treat) %>% 
+                                                   filter(Syncom == syncom) %$%
+                                                   x,
+                                                 placed_edges %>% 
+                                                   filter(Treatment == treat) %>% 
+                                                   filter(Syncom == syncom) %$%
+                                                   xend) ~ syncom,
+                                        TRUE ~ Syncom),
+                     Treatment = case_when(x %in% c(placed_edges %>% 
+                                                      filter(Treatment == treat) %>% 
+                                                      filter(Syncom == syncom) %$%
+                                                      x,
+                                                    placed_edges %>% 
+                                                      filter(Treatment == treat) %>% 
+                                                      filter(Syncom == syncom) %$%
+                                                      xend) ~ treat,
+                                           TRUE ~ Treatment)) %>% 
+              filter(!is.na(Syncom)) %>% 
+              filter(!is.na(Treatment))})
+        }) %>% 
+        unlist(recursive = FALSE)),
+    bind_rows(
+      lapply(Syncoms, function(syncom){
+        lapply(Treatments, function(treat){
+            placed_nodes %>% 
+              mutate(Syncom = case_when(y %in% c(placed_edges %>% 
+                                                   filter(Treatment == treat) %>% 
+                                                   filter(Syncom == syncom) %$%
+                                                   y,
+                                                 placed_edges %>% 
+                                                   filter(Treatment == treat) %>% 
+                                                   filter(Syncom == syncom) %$%
+                                                   yend) ~ syncom,
+                                        TRUE ~ Syncom),
+                     Treatment = case_when(y %in% c(placed_edges %>% 
+                                                      filter(Treatment == treat) %>% 
+                                                      filter(Syncom == syncom) %$%
+                                                      y,
+                                                    placed_edges %>% 
+                                                      filter(Treatment == treat) %>% 
+                                                      filter(Syncom == syncom) %$%
+                                                      yend) ~ treat,
+                                           TRUE ~ Treatment)) %>% 
+              filter(!is.na(Syncom)) %>% 
+              filter(!is.na(Treatment))})
+      }) %>%
+        unlist(recursive = FALSE))) %>% 
+    distinct()
+  
+  
+  bind_rows(placed_nodes,
+            placed_edges) %>% 
+    distinct()
+}
+
+
 

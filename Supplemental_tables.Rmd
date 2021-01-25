@@ -1,5 +1,5 @@
 ---
-title: "Supplemental Tables for Plant-derived benzoxazinoids act as antibiotics and shape bacterial communities"
+title: "Supplemental Tables for: Plant-derived benzoxazinoids act as antibiotics and shape bacterial communities"
 author: "Niklas Schandry, Katharina Jandrasits, Ruben Garrido-Oter, Claude Becker"
 output:
   pdf_document:
@@ -33,37 +33,46 @@ readr::read_rds("files_publication/TabS2_permanova_gt.rds") %>%
 
 \newpage
 
-# Table S3. ANOVA: observed taxa
+# Table S3. PERMANOVA comparing only two treatments
 
-```{r echo=F}
-readr::read_rds("files_publication/TabS3_gt.rds") %>% 
+```{r echo = F}
+readr::read_rds("files_publication/TabS3_PERMANOVA_per_treatment_gt.rds") %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-# Table S4. Observed diversity means and pairwise comparisons
+# Table S4. ANOVA: Observed taxa
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS4_gt.rds")  %>% 
+readr::read_rds("files_publication/TabS4_AOV_observed.rds") %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-# Table S5. ANOVA: Shannon Diversity
+# Table S5. Observed diversity means and pairwise comparisons
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS5_gt.rds") %>% 
+readr::read_rds("files_publication/TabS5_overserved_pairwise.rds")  %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-# Table S6. Shannon diversity means and pairwise comparisons
+# Table S6. ANOVA: Shannon Diversity
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS6_gt.rds") %>% 
+readr::read_rds("files_publication/TabS6_AOV_shannon.rds") %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+# Table S7. Shannon diversity means and pairwise comparisons
+
+```{r echo=F}
+readr::read_rds("files_publication/TabS7_shannon_pairwise.rds") %>% 
   gt::as_latex()
 ```
 

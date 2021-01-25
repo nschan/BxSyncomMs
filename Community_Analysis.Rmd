@@ -33,6 +33,7 @@ library(magrittr)
 library(ggnetwork)
 library(emmeans)
 require(vegan)
+require(correlation)
 ```
 
 ```{r load functions}
@@ -201,153 +202,6 @@ phyl_sensitive_rel_strain <- transform_sample_counts(phyl_sensitive_glom_strain,
 # Beta Diverstiy
 
 
-### PCoA with jaccard
-
-```{r}
-pcoa_jaccard_random_rel_strain <-  phyl_random_rel_strain %>%
-  ordinate("PCoA", distance = "jaccard") 
-pcoa_jaccard_random_plot<- plot_ordination(phyl_random_rel_strain,
-                pcoa_jaccard_random_rel_strain,
-                color = "Treatment",
-                axes = c(1,2)) +
-  ggforce::geom_mark_ellipse(fill = "grey90") +
-  geom_point() +
-  facet_grid(~Timepoint) +
-  geom_point(size = 3) +
-  geom_point(size = 3, pch = 21, color = "black") +
-  ggtitle(paste("Random Syncom: PCoA")) +
-  ggthemes::scale_color_few() +
-  theme_bw() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold"),
-        strip.background = element_rect(fill = "white"))  
-
-pcoa_jaccard_tolerant_rel_strain <-  phyl_tolerant_rel_strain %>%
-  ordinate("PCoA", "jaccard") 
-pcoa_jaccard_tolerant_plot <- plot_ordination(phyl_tolerant_rel_strain,
-                pcoa_jaccard_tolerant_rel_strain,
-                color = "Treatment",
-                axes = c(1,2)) +
-  ggforce::geom_mark_ellipse(fill = "grey90") +
-  geom_point() +
-  facet_grid(~Timepoint) +
-  geom_point(size = 3) +
-  geom_point(size = 3, pch = 21, color = "black") +
-  ggtitle(paste("Tolerant Syncom: PCoA")) +
-  ggthemes::scale_color_few() +
-  theme_bw() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold"),
-        strip.background = element_rect(fill = "white"))  
-
-pcoa_jaccard_mixed_rel_strain <-  phyl_mixed_rel_strain %>%
-  ordinate("PCoA", "jaccard") 
-pcoa_jaccard_mixed_plot <- plot_ordination(phyl_mixed_rel_strain,
-                pcoa_jaccard_mixed_rel_strain,
-                color = "Treatment",
-                axes = c(1,2)) +
-  ggforce::geom_mark_ellipse(fill = "grey90") +
-  geom_point() +
-  facet_grid(~Timepoint) +
-  geom_point(size = 3) +
-  geom_point(size = 3, pch = 21, color = "black") +
-  ggtitle(paste("Mixed Syncom: PCoA")) +
-  ggthemes::scale_color_few() +
-  theme_bw() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold"),
-        strip.background = element_rect(fill = "white"))  
-
-pcoa_jaccard_sensitive_rel_strain <-  phyl_sensitive_rel_strain %>%
-  ordinate("PCoA", "jaccard") 
-pcoa_jaccard_sensitve_plot <- plot_ordination(phyl_sensitive_rel_strain,
-                pcoa_jaccard_sensitive_rel_strain,
-                color = "Treatment",
-                axes = c(1,2)) +
-  ggforce::geom_mark_ellipse(fill = "grey90") +
-  geom_point() +
-  facet_grid(~Timepoint) +
-  geom_point(size = 3) +
-  geom_point(size = 3, pch = 21, color = "black") +
-  ggtitle(paste("Sensitive Syncom: PCoA")) +
-  ggthemes::scale_color_few() +
-  theme_bw() +
-  theme(text = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold"),
-        strip.background = element_rect(fill = "white"))  
-```
-
-#### Fig2
-
-```{r}
-phyl_all_strainglom <- merge_phyloseq(
-              phyloseq(otu_table(syncomRandom_noChim, taxa_are_rows =F),
-                  sample_data(syncomRandom_metadata),
-                  tax_table(syncomRandom_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain"),
-              phyloseq(otu_table(syncomTolerant_noChim, taxa_are_rows =F),
-                  sample_data(syncomTolerant_metadata),
-                  tax_table(syncomTolerant_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain"),
-              phyloseq(otu_table(syncomMixed_noChim, taxa_are_rows =F),
-                  sample_data(syncomMixed_metadata),
-                  tax_table(syncomMixed_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain"),
-              phyloseq(otu_table(syncomSensitive_noChim, taxa_are_rows =F),
-                  sample_data(syncomSensitive_metadata),
-                  tax_table(syncomSensitive_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain")
-) %>% 
-  tax_glom("Strain")
-```
-
-
-```{r}
-all_jaccard_PCoA_Strain <- phyl_all_strainglom %>% 
-  transform_sample_counts(function(x) x / sum(x)) %>% 
-  ordinate("PCoA", "jaccard")
-```
-
-```{r}
-all_syncom_jaccard_pcoa <- plot_ordination(phyl_all_strainglom, all_jaccard_PCoA_Strain, color = "Syncom") +
-  geom_point(aes(color = Syncom), size =3) +
-  facet_grid(Timepoint ~ fct_relevel(Treatment, c("Control","BOA","APO"))) +
-  geom_point(size = 3) +
-  geom_point(size = 3, pch = 21, color = "black") +
-  ggforce::geom_mark_ellipse() +
-  theme_bw() +
-  ggthemes::scale_color_few(na.value = "grey80",
-                           name = "Syncom",
-                           labels = c("Random",
-                                      "Tolerant",
-                                      "Mixed",
-                                      "Sensitive"),
-                           breaks = c("Full_Random",
-                                      "Reduced_Tolerant",
-                                      "Reduced_Mixed",
-                                      "Reduced_Sensitive")) +
-    theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        axis.text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) +
-  ggtitle("PCoA of all Syncoms")
-```
-
-```{r}
-all_syncom_jaccard_pcoa /
-(pcoa_jaccard_random_plot | pcoa_jaccard_tolerant_plot) /
-(pcoa_jaccard_mixed_plot | pcoa_jaccard_sensitve_plot) +
-  plot_layout(guides = "collect",
-              heights = c(3,1,1)) +
-  plot_annotation(tag_levels = "A") &
-  theme(text=element_text(family = "NimbusMon"), strip.background = element_rect(fill = "white"))
-```
-
 ### CCA with jaccard
 
 ```{r}
@@ -425,75 +279,6 @@ cca_jaccard_sensitve_plot <- plot_ordination(phyl_sensitive_rel_strain,
 ```
 
 #### Fig2
-
-```{r}
-phyl_all_strainglom <- merge_phyloseq(
-              phyloseq(otu_table(syncomRandom_noChim, taxa_are_rows =F),
-                  sample_data(syncomRandom_metadata),
-                  tax_table(syncomRandom_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain"),
-              phyloseq(otu_table(syncomTolerant_noChim, taxa_are_rows =F),
-                  sample_data(syncomTolerant_metadata),
-                  tax_table(syncomTolerant_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain"),
-              phyloseq(otu_table(syncomMixed_noChim, taxa_are_rows =F),
-                  sample_data(syncomMixed_metadata),
-                  tax_table(syncomMixed_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain"),
-              phyloseq(otu_table(syncomSensitive_noChim, taxa_are_rows =F),
-                  sample_data(syncomSensitive_metadata),
-                  tax_table(syncomSensitive_tax)) %>%
-               subset_samples(Rep != "Rep_1") %>%
-               tax_glom("Strain")
-) %>% 
-  tax_glom("Strain")
-```
-
-
-```{r}
-all_jaccard_cca_Strain <- phyl_all_strainglom %>% 
-  transform_sample_counts(function(x) x / sum(x)) %>% 
-  ordinate("CCA", "jaccard", formula = ~Syncom*Treatment*Timepoint)
-```
-
-```{r}
-all_syncom_jaccard_cca <- plot_ordination(phyl_all_strainglom, all_jaccard_cca_Strain, color = "Syncom") +
-  geom_point(aes(color = Syncom), size =3) +
-  facet_grid(Timepoint ~ fct_relevel(Treatment, c("Control","BOA","APO"))) +
-  geom_point(size = 3) +
-  geom_point(size = 3, pch = 21, color = "black") +
-  ggforce::geom_mark_ellipse() +
-  theme_bw() +
-  ggthemes::scale_color_few(na.value = "grey80",
-                           name = "Syncom",
-                           labels = c("Random",
-                                      "Tolerant",
-                                      "Mixed",
-                                      "Sensitive"),
-                           breaks = c("Full_Random",
-                                      "Reduced_Tolerant",
-                                      "Reduced_Mixed",
-                                      "Reduced_Sensitive")) +
-    theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        axis.text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) +
-  ggtitle("CCA of all Syncoms", sub = "Syncom*Treatment*Timepoint")
-```
-
-```{r}
-all_syncom_jaccard_cca /
-(cca_jaccard_random_plot | cca_jaccard_tolerant_plot) /
-(cca_jaccard_mixed_plot | cca_jaccard_sensitve_plot) +
-  plot_layout(guides = "collect",
-              heights = c(3,1,1)) +
-  plot_annotation(tag_levels = "A") &
-  theme(text=element_text(family = "NimbusMon"), strip.background = element_rect(fill = "white"))
-```
 
 ```{r}
 (cca_jaccard_random_plot | cca_jaccard_tolerant_plot) /
@@ -625,7 +410,8 @@ vegan::adonis(sensitive_jaccard ~ Timepoint * Treatment, data = sensitive_sample
 ```
 
 ```{r}
-bind_rows(list(vegan::adonis(random_jaccard ~ Timepoint * Treatment, data = random_samples ) %>% 
+bind_rows(list(
+  vegan::adonis(random_jaccard ~ Timepoint * Treatment, data = random_samples ) %>% 
   .$aov.tab %>% 
   as_tibble(rownames= "term") %>% 
   mutate(Syncom = "Random"),
@@ -674,520 +460,158 @@ vegan::adonis(sensitive_jaccard ~ Timepoint * Treatment, data = sensitive_sample
   write_rds("TabS5_permanova_gt.rds")
 ```
 
-### 
+### PERMANOVA Subsets
 
 ```{r}
-vegan::adonis(tolerant_jaccard ~ Timepoint + Treatment,data = tolerant_samples ) #%>% .$coef.sites
-```
+random_jaccard_APO_DMSO <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
 
+random_jaccard_BOA_DMSO <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
 
-```{r}
-vegan::adonis(tolerant_jaccard ~ Timepoint + Treatment,data = tolerant_samples ) %>% .$coef.sites
-```
+tolerant_jaccard_APO_DMSO <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
 
-```{r}
-vegan::adonis(tolerant_jaccard ~ Timepoint + Treatment,data = tolerant_samples ) %>% .$coef.sites
-```
+tolerant_jaccard_BOA_DMSO <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
 
+mixed_jaccard_APO_DMSO <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
 
-## Centroid distances
+mixed_jaccard_BOA_DMSO <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
 
-```{r}
-colors_centroids <- wesanderson::wes_palette("Royal1", 2, "discrete")
-```
+sensitive_jaccard_APO_DMSO <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
 
-
-```{r}
-centroid_dist_random <- vegan::betadisper(random_jaccard, paste(labels(random_jaccard) %>% str_extract("APO|BOA|DMSO"),
-  labels(random_jaccard) %>% str_extract("24h|48h|72h|96h"), sep = "_")) %>% 
-  vegan::scores() %>% 
-  .$centroids %>% 
-  as.data.frame() %>% 
-  set_colnames(c("PCoA1","PCoA2")) %>% 
-  rownames_to_column("Sample") %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  separate(Sample, c("Treatment", "Timepoint"), sep ="_") %>% 
-  group_by(Timepoint, PC) %>% 
-  mutate(Dist_from_DMSO = Distance - Distance[Treatment == "DMSO"]) %>% 
-  filter(Treatment != "DMSO") %>% 
-  ggplot(aes(x = Timepoint, y = abs(Distance))) +
-  geom_col(aes(fill = PC, group = Timepoint), position = "dodge2") +
-  facet_grid(~Treatment) +
-  labs(y = "Distance from Control",
-       title = "Random") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-centroid_dist_random
+sensitive_jaccard_BOA_DMSO <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
 ```
 
 ```{r}
-centroid_dist_tolerant <- vegan::betadisper(tolerant_jaccard, paste(labels(tolerant_jaccard) %>% str_extract("APO|BOA|DMSO"),
-  labels(tolerant_jaccard) %>% str_extract("24h|48h|72h|96h"), sep = "_")) %>% 
-  vegan::scores() %>% 
-  .$centroids %>% 
-  as.data.frame() %>% 
-  set_colnames(c("PCoA1","PCoA2")) %>% 
-  rownames_to_column("Sample") %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  separate(Sample, c("Treatment", "Timepoint"), sep ="_") %>% 
-  group_by(Timepoint, PC) %>% 
-  mutate(Dist_from_DMSO = Distance - Distance[Treatment == "DMSO"]) %>% 
-  filter(Treatment != "DMSO") %>% 
-  ggplot(aes(x = Timepoint, y = abs(Distance))) +
-  geom_col(aes(fill = PC, group = Timepoint), position = "dodge2") +
-  facet_grid(~Treatment) +
-  labs(y = "Distance from Control",
-       title = "Tolerant") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-centroid_dist_tolerant
+random_jaccard_APO_DMSO_samp <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+random_jaccard_BOA_DMSO_samp <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+
+tolerant_jaccard_APO_DMSO_samp <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+tolerant_jaccard_BOA_DMSO_samp <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+
+mixed_jaccard_APO_DMSO_samp <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+mixed_jaccard_BOA_DMSO_samp <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+
+sensitive_jaccard_APO_DMSO_samp <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+sensitive_jaccard_BOA_DMSO_samp <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
 ```
 
 ```{r}
-centroid_dist_mixed <- vegan::betadisper(mixed_jaccard, paste(labels(mixed_jaccard) %>% str_extract("APO|BOA|DMSO"),
-  labels(mixed_jaccard) %>% str_extract("24h|48h|72h|96h"), sep = "_")) %>% 
-  vegan::scores() %>% 
-  .$centroids %>% 
-  as.data.frame() %>% 
-  set_colnames(c("PCoA1","PCoA2")) %>% 
-  rownames_to_column("Sample") %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  separate(Sample, c("Treatment", "Timepoint"), sep ="_") %>% 
-  group_by(Timepoint, PC) %>% 
-  mutate(Dist_from_DMSO = Distance - Distance[Treatment == "DMSO"]) %>% 
-  filter(Treatment != "DMSO") %>% 
-  ggplot(aes(x = Timepoint, y = abs(Distance))) +
-  geom_col(aes(fill = PC, group = Timepoint), position = "dodge2") +
-  facet_grid(~Treatment) +
-  labs(y = "Distance from Control",
-       title = "Mixed") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-centroid_dist_mixed
+treat_permaov_tab <- bind_rows(list(
+  vegan::adonis(random_jaccard_APO_DMSO ~ Treatment, data = random_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Random",
+         Treatment = "APO")  ,
+vegan::adonis(random_jaccard_BOA_DMSO ~ Treatment, data = random_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Random",
+         Treatment = "BOA"),
+  vegan::adonis(tolerant_jaccard_APO_DMSO ~ Treatment, data = tolerant_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Tolerant",
+         Treatment = "APO")  ,
+vegan::adonis(tolerant_jaccard_BOA_DMSO ~ Treatment, data = tolerant_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Tolerant",
+         Treatment = "BOA"),
+  vegan::adonis(mixed_jaccard_APO_DMSO ~ Treatment, data = mixed_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Mixed",
+         Treatment = "APO")  ,
+vegan::adonis(mixed_jaccard_BOA_DMSO ~ Treatment, data = mixed_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Mixed",
+         Treatment = "BOA"),
+  vegan::adonis(sensitive_jaccard_APO_DMSO ~ Treatment, data = sensitive_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Sensitive",
+         Treatment = "APO")  ,
+vegan::adonis(sensitive_jaccard_BOA_DMSO ~ Treatment, data = sensitive_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Sensitive",
+         Treatment = "BOA"))) %>%
+  {set_colnames(.,c(colnames(.)[1:6], "p.value", "Syncom", "Treatment"))} %>% 
+  mutate(round(across(where(is.numeric)),4))
 ```
+
+### Table
 
 ```{r}
-centroid_dist_sensitive <- vegan::betadisper(sensitive_jaccard, paste(labels(sensitive_jaccard) %>% str_extract("APO|BOA|DMSO"),
-  labels(sensitive_jaccard) %>% str_extract("24h|48h|72h|96h"), sep = "_")) %>% 
-  vegan::scores() %>% 
-  .$centroids %>% 
-  as.data.frame() %>% 
-  set_colnames(c("PCoA1","PCoA2")) %>% 
-  rownames_to_column("Sample") %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  separate(Sample, c("Treatment", "Timepoint"), sep ="_") %>% 
-  group_by(Timepoint, PC) %>% 
-  mutate(Dist_from_DMSO = Distance - Distance[Treatment == "DMSO"]) %>% 
-  filter(Treatment != "DMSO") %>% 
-  ggplot(aes(x = Timepoint, y = abs(Distance))) +
-  geom_col(aes(fill = PC, group = Timepoint), position = "dodge2") +
-  facet_grid(~Treatment) +
-  labs(y = "Distance from Control",
-       title = "Sensitive") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-centroid_dist_sensitive
+treat_permaov_tab %>% 
+  group_by(Syncom, Treatment) %>% 
+  gt::gt() %>% 
+#  gt::tab_header("Table S5. PERMANOVA", subtitle = "999 Permutations") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","R2","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("files_publication/TabS3_PERMANOVA_per_treatment_gt.rds")
 ```
 
-### Combined
-
-```{r}
-(centroid_dist_random + centroid_dist_tolerant) /
-  (centroid_dist_mixed + centroid_dist_sensitive) +
-  plot_layout(guides = 'collect')
-```
-
-### CCA Centroids
-
-```{r}
-cca_jaccard_random_rel_strain <-  phyl_random_rel_strain %>%
-  ordinate("CCA", distance = "jaccard", formula = ~Timepoint*Treatment) 
-cca_jaccard_tolerant_rel_strain <-  phyl_tolerant_rel_strain %>%
-  ordinate("CCA", distance = "jaccard", formula = ~Timepoint*Treatment) 
-cca_jaccard_mixed_rel_strain <-  phyl_mixed_rel_strain %>%
-  ordinate("CCA", distance = "jaccard", formula = ~Timepoint*Treatment) 
-cca_jaccard_sensitive_rel_strain <-  phyl_sensitive_rel_strain %>%
-  ordinate("CCA", distance = "jaccard", formula = ~Timepoint*Treatment) 
-```
-
-```{r}
-centroids_scaled <- bind_rows(
-cca_jaccard_random_rel_strain %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Random") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-cca_jaccard_tolerant_rel_strain %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Tolerant") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-cca_jaccard_mixed_rel_strain %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Mixed") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-cca_jaccard_sensitive_rel_strain %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Sensitive") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  
-) %>% 
-  mutate(Treatment = str_extract(Var,"BOA|APO"))
-```
-
-```{r}
-centroids_scaled %>% 
-  ggplot(aes(x = Treatment, y = Dist_from_Control)) +
-  geom_col(aes(fill = PC, group = Var), position = "dodge2") +
-  facet_grid(~Syncom) +
-  labs(y = "Distance from Control") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-```
-```{r}
-centroids_scaled %>% 
-  group_by(Syncom, Treatment) %>%
-  summarise(Total_dist = sum(abs(Dist_from_Control))) %>% 
-  ungroup %>% 
-  ggplot(aes(x = Treatment, y = Total_dist)) +
-  geom_col(aes(fill = Treatment),position = "dodge2") +
-  facet_grid(~Syncom) +
-  labs(y = "Scaled Aggregate distance from Control") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-```
-
-```{r}
-centroids_scaled %>% 
-  group_by(Syncom) %>%
-  summarise(Total_dist = sum(abs(Dist_from_Control))) %>% 
-  ungroup %>% 
-  ggplot(aes(x = Syncom, y = Total_dist)) +
-  geom_col(position = "dodge2") +
-  labs(y = "Scaled aggregate distance from Control") +
-  scale_fill_manual(values = colors_centroids) +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-```
-
-### Per timepoint centroids
-
-```{r}
-centroids_random_scaled_per_timepoint <- bind_rows(
-phyl_random_rel_strain %>%
-  subset_samples(Timepoint == "24h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Random") %>% 
-  mutate(Timepoint = "24h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_random_rel_strain %>%
-  subset_samples(Timepoint == "48h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Random") %>% 
-  mutate(Timepoint = "48h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_random_rel_strain %>%
-  subset_samples(Timepoint == "72h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Random") %>% 
-  mutate(Timepoint = "72h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_random_rel_strain %>%
-  subset_samples(Timepoint == "96h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Random") %>% 
-  mutate(Timepoint = "96h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")) %>% 
-  mutate(Treatment = str_extract(Var,"BOA|APO"))
-
-centroids_tolerant_scaled_per_timepoint <- bind_rows(
-phyl_tolerant_rel_strain %>%
-  subset_samples(Timepoint == "24h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Tolerant") %>% 
-  mutate(Timepoint = "24h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_tolerant_rel_strain %>%
-  subset_samples(Timepoint == "48h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Tolerant") %>% 
-  mutate(Timepoint = "48h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_tolerant_rel_strain %>%
-  subset_samples(Timepoint == "72h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Tolerant") %>% 
-  mutate(Timepoint = "72h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_tolerant_rel_strain %>%
-  subset_samples(Timepoint == "96h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Tolerant") %>% 
-  mutate(Timepoint = "96h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")) %>% 
-  mutate(Treatment = str_extract(Var,"BOA|APO"))
-
-centroids_mixed_scaled_per_timepoint <- bind_rows(
-phyl_mixed_rel_strain %>%
-  subset_samples(Timepoint == "24h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Mixed") %>% 
-  mutate(Timepoint = "24h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_mixed_rel_strain %>%
-  subset_samples(Timepoint == "48h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Mixed") %>% 
-  mutate(Timepoint = "48h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_mixed_rel_strain %>%
-  subset_samples(Timepoint == "72h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Mixed") %>% 
-  mutate(Timepoint = "72h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_mixed_rel_strain %>%
-  subset_samples(Timepoint == "96h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Mixed") %>% 
-  mutate(Timepoint = "96h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")) %>% 
-  mutate(Treatment = str_extract(Var,"BOA|APO"))
-
-centroids_sensitive_scaled_per_timepoint <- bind_rows(
-phyl_sensitive_rel_strain %>%
-  subset_samples(Timepoint == "24h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Sensitive") %>% 
-  mutate(Timepoint = "24h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_sensitive_rel_strain %>%
-  subset_samples(Timepoint == "48h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Sensitive") %>% 
-  mutate(Timepoint = "48h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_sensitive_rel_strain %>%
-  subset_samples(Timepoint == "72h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Sensitive") %>% 
-  mutate(Timepoint = "72h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")  ,
-phyl_sensitive_rel_strain %>%
-  subset_samples(Timepoint == "96h") %>% 
-  ordinate("CCA", distance = "jaccard", formula = ~Treatment)  %>% 
-  scores(scaling = -3) %>%
-  .$centroids %>%
-  as.data.frame() %>% 
-  rownames_to_column("Var") %>% 
-  mutate(Syncom = "Sensitive") %>% 
-  mutate(Timepoint = "96h") %>% 
-  filter(str_detect(Var, "Treatment")) %>% 
-  pivot_longer(2:3, names_to = "PC", values_to = "Distance") %>% 
-  mutate(Dist_from_Control = Distance - Distance[Var == "TreatmentControl"]) %>% 
-  filter(Var != "TreatmentControl")) %>% 
-  mutate(Treatment = str_extract(Var,"BOA|APO"))
-```
-
-```{r}
-bind_rows(centroids_random_scaled_per_timepoint,
-          centroids_tolerant_scaled_per_timepoint,
-          centroids_mixed_scaled_per_timepoint,
-          centroids_sensitive_scaled_per_timepoint) %>% 
-  group_by(Syncom, Timepoint, Treatment) %>%
-  summarise(Total_dist = sum(abs(Dist_from_Control))) %>% 
-  ungroup %>% 
-  ggplot(aes(x = Timepoint, y = Total_dist)) +
-  geom_col(aes(fill = Treatment), position = "dodge2") +
-  facet_grid(~fct_relevel(Syncom, c("Random", "Tolerant", "Mixed","Sensitive"))) +
-  labs(y = "Scaled centroid distance from control") +
-  ggthemes::scale_fill_few() +
-  theme_bw() +
-      theme(plot.title = element_text(family = "NimbusMon"),
-        plot.subtitle =  element_text(family = "NimbusMon"),
-        text = element_text(family = "NimbusMon"),
-        axis.title = element_text(family = "NimbusMon"),
-        strip.text = element_text(family = "NimbusMon",face = "bold")) 
-```
-
-```{r}
-lm_centroids <- bind_rows(centroids_random_scaled_per_timepoint,
-          centroids_tolerant_scaled_per_timepoint,
-          centroids_mixed_scaled_per_timepoint,
-          centroids_sensitive_scaled_per_timepoint) %>% 
-  #group_by(Syncom) %>% 
-  {lm(abs(Dist_from_Control) ~ Syncom*Treatment, data = .)}
-emmeans::emmeans(lm_centroids,~Syncom|Treatment) %>% 
-  #summary %>% 
-  pwpp() +
-  theme_bw() +
-  theme(text = element_text(family = "NimbusMon"))
-```
-
-
-# Fig S3
-
-## AUC vs relative Abundance
+# AUC vs relative Abundance
 
 ```{r}
 strain_AUC <- AUC_emmeans %>%
@@ -1224,73 +648,9 @@ strain_relabund_per_timepoint <- bind_rows(list(
   ungroup()
 ```
 
-### Figure
+## Figure
 
-```{r}
-left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom)) %>% 
-  ggplot(aes(x = mean_AUC, y = mean_rel_abund, color = Treatment, shape = Syncom)) +
-  geom_point() +
-  ggthemes::scale_color_few() +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("Relative abundance") +
-  ggtitle("Figure S3: AUC vs Relative abundance") +
-  NULL
-```
-
-Only for strains that are found in communities:
-
-```{r}
-left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
-  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
-  geom_point(colour = "black", size = 2) +
-  geom_point() +
-  facet_wrap(~Treatment) +
-  scale_color_manual(values = syncom_colors) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("Relative abundance") +
-  ggtitle("Figure S3: AUC vs Relative abundance") +
-  NULL
-```
-
-```{r}
-left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
-  mutate(Syncom = fct_relevel(Syncom, c("Random","Tolerant","Mixed","Sensitive"))) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
-  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
-  geom_point(colour = "black", size = 2) +
-  geom_point() +
-  facet_grid(Syncom~Treatment) +
-  scale_color_manual(values = syncom_colors) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("log10(rel. abundance)") +
-  ggtitle("AUC vs Relative abundance") +
-  NULL
-```
-
-
-
-
-```{r}
-left_join(strain_AUC, strain_relabund_per_timepoint,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
-  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
-  geom_point(colour = "black", size = 2) +
-  geom_point() +
-  facet_grid(Timepoint~Treatment) +
-  scale_color_manual(values = syncom_colors) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("log10(rel. abundance)") +
-  ggtitle("Figure S3: AUC vs Relative abundance") +
-  NULL
-```
-
-## Delta 
+### Deltas 
 
 ```{r}
 strain_AUC_deltas <- strain_AUC %>% 
@@ -1314,7 +674,7 @@ left_join(strain_AUC_deltas, strain_relabund_per_timepoint_deltas,  by = c("Stra
   scale_color_manual(values = syncom_colors) +
   theme_bw(base_family = "NimbusMon") +
   xlab(expression(paste(Delta, " Area under the curve"))) +
-  ylab(expression(paste(Delta, " log10(rel. abundance)"))) +
+  ylab(expression(paste(Delta, " rel. abundance"))) +
   ggtitle("Figure S3: AUC vs Relative abundance compared to control") +
   NULL
 ```
@@ -1342,7 +702,7 @@ left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment
   scale_color_manual(values = syncom_colors) +
   theme_bw(base_family = "NimbusMon") +
   xlab(expression(paste(Delta, " Area under the curve"))) +
-  ylab(expression(paste(Delta, " log10(rel. abundance)"))) +
+  ylab(expression(paste(Delta, " rel. abundance"))) +
   ggtitle("Growth and abundance changes by treatment") +
   NULL
 ```
@@ -1399,19 +759,19 @@ left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment
          !is.na(Syncom),
          !is.na(mean_rel_abund),
          Treatment != "Control")  %>% 
-  ggplot(aes(x = delta_AUC, y = ratio_rel_abundance, color = Treatment)) +
-  geom_vline(aes(xintercept = 0)) +
+  ggplot(aes(x = mean_rel_AUC, y = ratio_rel_abundance, color = Treatment)) +
+  geom_vline(aes(xintercept = 1)) +
   geom_hline(aes(yintercept = 1)) +
-  geom_point(colour = "black", size = 3.5, alpha = 0.7) +
-  geom_point(size = 3, alpha = 0.7) +
+  geom_point(colour = "black", size = 4.5, alpha = 0.7) +
+  geom_point(size = 4, alpha = 0.7) +
   ggthemes::scale_color_few() +
   #scale_color_manual(values = syncom_colors)+
   facet_wrap(fct_relevel(Syncom, c("Random", "Tolerant", "Mixed","Sensitive"))~., ncol = 2,scales = "free_y") +
   #lims(y = c(-3.2,3.1)) +
   #scale_y_continuous(labels = c("Inf",2,1,0,-1, 2,"-Inf"), breaks = c(3,2,1,0,-1,-2,-3)) +
   theme_bw(base_family = "NimbusMon") +
-  xlab(expression(paste(Delta, " Area under the curve (Treatment - Control)"))) +
-  ylab(expression(paste("ratio rel. abundance (Treatment / Control)"))) +
+  xlab(expression(paste("Ratio area under the curve (Treatment / Control)"))) +
+  ylab(expression(paste("Ratio rel. abundance (Treatment / Control)"))) +
   ggtitle("Growth and abundance changes by treatment") +
   theme(plot.title = element_text(family = "NimbusMon"),
         plot.subtitle =  element_text(family = "NimbusMon"),
@@ -1421,132 +781,10 @@ left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment
         strip.text = element_text(family = "NimbusMon",face = "bold")) 
 ```
 
-Changes in AUC and changes in rela abundance are not correlated
+## Table of ranges
 
 ```{r}
-left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment),
-         !is.na(Syncom),
-         !is.na(mean_rel_abund),
-         Treatment != "Control",
-         !is.na(mean_rel_AUC),
-         !is.na(ratio_rel_abundance) ,
-         !is.infinite(mean_rel_AUC),
-         !is.infinite(ratio_rel_abundance)) %>% 
-  #.$ratio_rel_abundance
-  split(interaction(.$Syncom, .$Treatment)) %>% 
-  map(~cor.test(x=.x$mean_rel_AUC, y=.x$ratio_rel_abundance, method = "pearson"))
-```
-
-
-```{r}
-strain_relabund_delta  %>% 
-  filter(Treatment != "Control") %>% 
-  pivot_wider(c("Strain","Syncom"), names_from = c("Treatment"),values_from = ratio_rel_abundance) %>% 
-  ggplot(aes(x = APO, y = BOA, color = Syncom)) +
-  geom_vline(aes(xintercept = 0)) +
-  geom_hline(aes(yintercept = 0)) +
-  geom_point(colour = "black", size = 3.5, alpha = 0.4) +
-  geom_point(size = 3, alpha = .4) +
-  scale_color_manual(values = syncom_colors)+
-  facet_wrap(fct_relevel(Syncom, c("Random", "Tolerant", "Mixed","Sensitive"))~., ncol = 2) +
-  #lims(y = c(-3.2,3.1)) +
-  #scale_y_continuous(labels = c("Inf",2,1,0,-1, 2,"-Inf"), breaks = c(3,2,1,0,-1,-2,-3)) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab(expression(paste("Ratio abdundances APO / Control"))) +
-  ylab(expression(paste("Ratio abundances BOA / Control"))) +
-  ggtitle("Growth and abundance changes by treatment") +
-  NULL
-```
-
-```{r}
-left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment),
-         !is.na(Syncom),
-         !is.na(mean_rel_abund),
-         Treatment != "Control")  %>% 
-  ggplot(aes(x = delta_AUC, y = ratio_rel_abundance, color = Syncom, shape = Treatment)) +
-  geom_vline(aes(xintercept = 0)) +
-  geom_hline(aes(yintercept = 1)) +
-  geom_point(colour = "black", size = 3.5) +
-  geom_point(size = 3) +
-  scale_color_manual(values = syncom_colors)+
-  facet_wrap(Genus~.,scales = "free_y") +
-  #lims(y = c(-3.2,3.1)) +
-  #scale_y_continuous(labels = c("Inf",2,1,0,-1, 2,"-Inf"), breaks = c(3,2,1,0,-1,-2,-3)) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab(expression(paste(Delta, " Area under the curve"))) +
-  ylab(expression(paste("ratio rel. abundance"))) +
-  ggtitle("Growth and abundance changes by treatment") +
-  NULL
-```
-
-```{r}
-(left_join(strain_AUC, strain_relabund,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
-  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Syncom)) +
-  geom_point(colour = "black", size = 3.5) +
-  geom_point(size = 3) +
-  facet_wrap(~Treatment) +
-  scale_color_manual(values = syncom_colors) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("log10(rel. abundance)") +
-  ggtitle("AUC vs Relative abundance") +
-  NULL) /
-(left_join(strain_AUC_deltas, strain_relabund_delta,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment),
-         !is.na(Syncom),
-         !is.na(mean_rel_abund),
-         Treatment != "Control",
-         !is.nan(norm_d_rel_abundance),
-         !is.infinite(norm_d_rel_abundance)
-         ) %>%
-  ggplot(aes(x = delta_AUC, y = norm_d_rel_abundance, color = Syncom)) +
-  geom_vline(aes(xintercept = 0)) +
-  geom_hline(aes(yintercept = 0)) +
-  geom_point(colour = "black", size = 3.5) +
-  geom_point(size = 3) +
-  facet_wrap(~Treatment, scales = "free", ncol = 2) +
-  scale_color_manual(values = syncom_colors) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab(expression(paste(Delta, " Area under the curve"))) +
-  ylab(expression(paste("normalized\n",Delta, " rel. abundance"))) +
-  ggtitle("Growth and abundance changes by treatment") +
-  NULL) +
-  plot_layout(guides = 'collect')
-```
-
-
-```{r}
-left_join(strain_AUC, strain_relabund_per_timepoint,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
-  ggplot(aes(x = mean_rel_AUC, y = log10(mean_rel_abund), color = Syncom), alpha = 0.8) +
-  geom_point(colour = "black", size = 2) +
-  geom_point() +
-  facet_grid(Timepoint~Treatment) +
-  scale_color_manual(values = syncom_colors) +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("relative area under the curve") +
-  ylab("log10(rel. abundance)") +
-  ggtitle("Figure S3: AUC vs Relative abundance") +
-  NULL
-```
-
-
-```{r}
-left_join(strain_AUC, strain_relabund_per_timepoint,  by = c("Strain", "Treatment")) %>% 
-  filter(!is.na(Treatment), !is.na(Syncom), !is.na(mean_rel_abund), mean_rel_abund > 0) %>%
-  ggplot(aes(x = mean_AUC, y = log10(mean_rel_abund), color = Timepoint, shape = Timepoint)) +
-  geom_point(colour = "black", size = 2) +
-  geom_point() +
-  facet_grid(Syncom~Treatment) +
-  ggthemes::scale_color_colorblind() +
-  theme_bw(base_family = "NimbusMon") +
-  xlab("Area under the curve") +
-  ylab("log10(rel. abundance)") +
-  ggtitle("Figure S3: AUC vs Relative abundance") +
-  NULL
+strain_relabund_delta %>% group_by(Syncom, Treatment) %>% filter(!is.infinite(ratio_rel_abundance)) %>% filter(!is.nan(ratio_rel_abundance)) %>% filter(ratio_rel_abundance > 0) %>% summarize(min = min(ratio_rel_abundance), max = max(ratio_rel_abundance))
 ```
 
 # Alpha Diversity 
@@ -2184,8 +1422,6 @@ bind_rows(list(shannon_random %>%
   ) %>% 
   write_rds("TabS3_gt.rds")
 ```
-
-
 
 ```{r}
 shannon_aov <- bind_rows(list(
@@ -2866,134 +2102,7 @@ plot_rand_allcomparisons <- (bind_rows(
         legend.position = "bottom") 
 ```
 
-### Fig 3 extended
-
-This shows all isolates in each syncom, not only those that change significantly. Bordetella Root565 sticks out, since it performs very similarily in random and tolerant, is slightly (not significantly) more abundant in APO. 
-
-```{r}
-relabund_random <- phyl_random_rel_strain %>% 
-  psmelt() %>%
-  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
-  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
-  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
-  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
-  theme_bw() + 
-  scale_y_continuous(n.breaks = 4) +
-  #ggtitle(paste("Random: Relative Genus abundances")) +
-  ggthemes::scale_color_few() +
-  facet_wrap(~Genus_Strain, scales = "free_y")
-relabund_tolerant <- phyl_tolerant_rel_strain %>% 
-  psmelt() %>%
-  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
-  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
-  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
-  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
-  theme_bw() + 
-  scale_y_continuous(n.breaks = 4) +
-  #ggtitle(paste("Random: Relative Genus abundances")) +
-  ggthemes::scale_color_few() +
-  facet_wrap(~Genus_Strain, scales = "free_y")
-relabund_mixed <- phyl_mixed_rel_strain %>% 
-  psmelt() %>%
-  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
-  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
-  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
-  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
-  theme_bw() + 
-  scale_y_continuous(n.breaks = 4) +
-  #ggtitle(paste("Random: Relative Genus abundances")) +
-  ggthemes::scale_color_few() +
-  facet_wrap(~Genus_Strain, scales = "free_y")
-relabund_sensitive <- phyl_sensitive_rel_strain %>% 
-  psmelt() %>%
-  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
-  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
-  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
-  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
-  theme_bw() + 
-  scale_y_continuous(n.breaks = 4) +
-  #ggtitle(paste("Random: Relative Genus abundances")) +
-  ggthemes::scale_color_few() +
-  facet_wrap(~Genus_Strain, scales = "free_y")
-```
-
-```{r}
-(relabund_random | relabund_tolerant) /
-  (relabund_mixed | relabund_sensitive) +
-  plot_annotation(tag_levels = "A") +
-  plot_layout(guides = 'collect' ) &
-  theme(text = element_text(family ="NimbusMon"),
-        strip.background = element_rect(fill = "white"),
-        legend.position = "bottom") 
-```
-
-### Correlation community l2fc with growth assays
-
-```{r}
-fold_changes_communities <- bind_rows(list(
-       APO_DMSO_sensitive %>% mutate(Comparison = "APO / Control", Syncom = "Sensitive"),
-       BOA_DMSO_sensitive %>% mutate(Comparison = "BOA / Control", Syncom = "Sensitive"),
-       APO_DMSO_tolerant %>% mutate(Comparison = "APO / Control", Syncom = "Tolerant"),
-       BOA_DMSO_tolerant %>% mutate(Comparison = "BOA / Control", Syncom = "Tolerant"),
-       APO_DMSO_mixed %>% mutate(Comparison = "APO / Control", Syncom = "Mixed"),
-       BOA_DMSO_mixed %>% mutate(Comparison = "BOA / Control", Syncom = "Mixed"),
-       APO_DMSO_random %>% mutate(Comparison = "APO / Control", Syncom = "Random"),
-       BOA_DMSO_random %>% mutate(Comparison = "BOA / Control", Syncom = "Random")))
-
-fold_changes_communities
-
-all_strains <- bind_rows(list(phyl_tolerant_rel_strain %>% 
-  psmelt() %>%
-  dplyr::select(Genus, Strain, Syncom),
-phyl_random_rel_strain %>% 
-  psmelt() %>% 
-  dplyr::select(Genus, Strain, Syncom),
-  phyl_sensitive_rel_strain %>% 
-  psmelt() %>% 
-  dplyr::select(Genus, Strain, Syncom),
-  phyl_mixed_rel_strain %>% 
-  psmelt() %>%
-  dplyr::select(Genus, Strain, Syncom))) %>% 
-  separate(Syncom, into = c(NA, "Syncom"), sep ="_") 
-
-strain_AUC_rel <- AUC_emmeans %>%
-  filter(Treat.x %in% c("Control","50uM_APO","100uM_BOA")) %>%
-  mutate(Treatment = case_when(Treat.x == "Control" ~ Treat.x,
-                               Treat.x == "50uM_APO" ~ "APO",
-                               Treat.x == "100uM_BOA" ~ "BOA")) %>% 
-  dplyr::select(Strain, Treatment, estimate) %>%
-  group_by(Strain,Treatment) %>%
-  summarize(mean_rel_AUC = mean(estimate, na.rm = T)) %>%
-  ungroup  %>% 
-  unique
-```
-
-```{r}
-fold_changes_communities %>%
-  separate(Comparison, c("Treatment", NA), sep = " / ") %>% 
-  left_join(all_strains, by = c("Genus","Syncom")) %>% 
-  left_join(strain_AUC_rel, by = c("Strain", "Treatment")) %>% 
-  unique() %>% 
-  filter(Treatment == "APO") %>% 
-  droplevels() %>%
-  {cor(x = .$log2FoldChange, y=.$mean_rel_AUC)}
-```
-
-```{r}
-fold_changes_communities %>%
-  separate(Comparison, c("Treatment", NA), sep = " / ") %>% 
-  left_join(all_strains, by = c("Genus","Syncom")) %>% 
-  left_join(strain_AUC_rel, by = c("Strain", "Treatment")) %>% 
-  unique() %>% 
-  filter(Treatment == "APO") %>% 
-  droplevels() %>% 
-  ggplot(aes(x = log2FoldChange, y = mean_rel_AUC)) +
-  geom_point() +
-  facet_grid(Syncom ~ Timepoint)
-```
-
-
-## Overlap Random and Tolerant
+# Overlap Random and Tolerant
 
 ```{r}
 tol_strains <- phyl_tolerant_rel_strain %>% 
@@ -3080,9 +2189,9 @@ relabund_random_overlap_tol /
         legend.position = "bottom")
 ```
 
-# Fig 4
+## Fig 4
 
-## Plot of overlapping strains
+### Plot of overlapping strains
 
 ```{r}
 rand_tol_relabund_overlap_plot <-
@@ -3105,7 +2214,7 @@ rand_tol_relabund_overlap_plot <-
   scale_y_continuous(n.breaks = 4) +
   ggtitle(paste("Relative abundance of overlapping isolates")) +
   ggthemes::scale_color_few() +
-  facet_wrap(~paste(Syncom, Genus_Strain, sep = "\n"),
+  facet_wrap(paste(Syncom, Genus_Strain, sep = "\n")~.,
              scales = "free_y",
              ncol = 5,
              strip.position = "top") +
@@ -3142,14 +2251,18 @@ random_strains_genus <- phyl_random_rel_strain %>%
 ## Correlations
 
 ```{r}
+corr_meth <- "pearson"
+adjust <- "none"
+
 tol_apo_boa_24_96 <- bind_rows(
   list(
   phyl_tolerant_glom_strain %>% 
   subset_samples(Timepoint == "96h") %>%
   create_corrnet("Treatment",
                  "APO",
+                 p.adj = adjust,
                  99, 
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>%
     mutate(Treatment = "APO",
            Syncom = "Tolerant",
@@ -3158,8 +2271,9 @@ tol_apo_boa_24_96 <- bind_rows(
   subset_samples(Timepoint == "24h") %>%
   create_corrnet("Treatment",
                  "APO",
+                 p.adj = adjust,                 
                  99, 
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>%
     mutate(Treatment = "APO",
            Syncom = "Tolerant",
@@ -3169,7 +2283,8 @@ phyl_tolerant_glom_strain %>%
   create_corrnet("Treatment",
                  "BOA",
                  99, 
-                 method = "pearson",
+                 p.adj = adjust,
+                 method = corr_meth,
                  OTUcol = "Genus") %>% 
   mutate(Treatment = "BOA",
          Timepoint = "96h",
@@ -3178,8 +2293,9 @@ phyl_tolerant_glom_strain %>%
   subset_samples(Timepoint == "24h") %>%
   create_corrnet("Treatment",
                  "BOA",
+                 p.adj = adjust,
                  99, 
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>% 
   mutate(Treatment = "BOA",
          Timepoint = "24h",
@@ -3189,8 +2305,9 @@ rand_apo_boa_24_96 <- bind_rows(list(phyl_random_glom_strain %>%
   subset_samples(Timepoint == "96h") %>%
   create_corrnet("Treatment",
                  "APO",
+                 p.adj = adjust,
                  99,
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>%
     mutate(Treatment = "APO",
            Timepoint = "96h",
@@ -3199,8 +2316,9 @@ rand_apo_boa_24_96 <- bind_rows(list(phyl_random_glom_strain %>%
   subset_samples(Timepoint == "24h") %>%
   create_corrnet("Treatment",
                  "APO",
+                 p.adj = adjust,
                  99,
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>%
     mutate(Treatment = "APO",
            Timepoint = "24h",
@@ -3209,8 +2327,9 @@ phyl_random_glom_strain %>%
   subset_samples(Timepoint == "96h") %>%
   create_corrnet("Treatment",
                  "BOA",
+                 p.adj = adjust,
                  99, 
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>% 
   mutate(Treatment = "BOA",
          Timepoint = "96h",
@@ -3219,8 +2338,9 @@ phyl_random_glom_strain %>%
   subset_samples(Timepoint == "24h") %>%
   create_corrnet("Treatment",
                  "BOA",
+                 p.adj = adjust,
                  99, 
-                 method = "pearson",
+                 method = corr_meth,
                  OTUcol = "Genus") %>% 
   mutate(Treatment = "BOA",
          Timepoint = "24h",
@@ -3228,13 +2348,15 @@ phyl_random_glom_strain %>%
 )) 
 
 tol_rand_apo_boa_24_96_corrs_p <- rbind(tol_apo_boa_24_96, rand_apo_boa_24_96) %>% 
+  filter(p < 0.05)
+tol_rand_apo_boa_24_96_corrs_r <- rbind(tol_apo_boa_24_96, rand_apo_boa_24_96) %>% 
   filter(abs(r) > 0.5)
 ```
 
 ```{r}
 # Set seed for reproducibility of layout
 set.seed(21356)
-corrnetwork_plot <- tol_rand_apo_boa_24_96_corrs_p  %>% 
+corrnetwork_plot <- tol_rand_apo_boa_24_96_corrs_r  %>% 
   graph_from_data_frame() %>% 
   { permute(., sample(vcount(.))) } %>% 
   ggnetwork::ggnetwork(layout = igraph::in_circle(),
@@ -3250,7 +2372,7 @@ corrnetwork_plot <- tol_rand_apo_boa_24_96_corrs_p  %>%
                                TRUE ~"Neither")) %>% 
   left_join(abundances_tol_rand, by = c("Syncom","Strain","Treatment","Timepoint")) %>% 
   ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
-  geom_edges(aes(color = r), curvature = 0.2) +
+  geom_edges(aes(color = rho), curvature = 0.2) +
   geom_nodes(aes(size = Abundance)) +
   geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
   geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
@@ -3282,7 +2404,7 @@ rand_tol_relabund_overlap_plot /
 ## Some network descriptive stats
 
 ```{r}
-edge_count <- tol_rand_apo_boa_24_96_corrs_p  %>% 
+edge_count <- tol_rand_apo_boa_24_96_corrs_r  %>% 
   graph_from_data_frame() %>% 
   { permute(., sample(vcount(.))) }%>% 
   ggnetwork::ggnetwork(layout = igraph::in_circle(),
@@ -3294,7 +2416,7 @@ edge_count <- tol_rand_apo_boa_24_96_corrs_p  %>%
   set_colnames(c("Condition", "edges"))
 ```
 ```{r}
-node_count <- tol_rand_apo_boa_24_96_corrs_p  %>% 
+node_count <- tol_rand_apo_boa_24_96_corrs_r  %>% 
   graph_from_data_frame() %>% 
   { permute(., sample(vcount(.))) }%>% 
   ggnetwork::ggnetwork(layout = igraph::in_circle(),
@@ -3313,7 +2435,7 @@ left_join(node_count, edge_count) %>%
 ```
 
 ```{r}
-tol_rand_apo_boa_24_96_corrs_p  %>%
+tol_rand_apo_boa_24_96_corrs_r  %>%
   {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
   map_dfr(~ graph_from_data_frame(.x) %>% betweenness(), .id = "Condition")  %>% 
   pivot_longer(2:14, names_to = "Genus", values_to = "Betweenness") %>% 
@@ -3326,7 +2448,7 @@ tol_rand_apo_boa_24_96_corrs_p  %>%
   facet_wrap(Genus~Treatment)
 ```
 ```{r}
-tol_rand_apo_boa_24_96_corrs_p  %>%
+tol_rand_apo_boa_24_96_corrs_r  %>%
   {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
   map_dfr(~ graph_from_data_frame(.x) %>% degree(), .id = "Condition") %>% 
   pivot_longer(2:14, names_to = "Genus", values_to = "Degree") %>% 

@@ -18,7 +18,7 @@ create_corrnet <- function(phyl,
                            mincounts = 99,
                            OTUcol = "Strain",
                            method = "spearman",
-                           use = "pairwise.complete.obs"){
+                           p.adj = "holm"){
   counts <- phyl %>% 
     phyloseq::phyloseq_to_deseq2(reformulate(treatvar)) %>% 
     DESeq2::DESeq() %>% 
@@ -61,10 +61,13 @@ create_corrnet <- function(phyl,
   
   network <- network[, colSums(network) > mincounts] 
   
-  network <- network %>% 
-    corrr::correlate(method = method, use = use) %>% 
-    corrr::stretch(remove.dups = T) %>% 
-    na.omit()
+  # network <- network %>% 
+  #   corrr::correlate(method = method, use = use) %>% 
+  #   corrr::stretch(remove.dups = T) %>% 
+  #   na.omit()
   
+  network <- network %>%
+    correlation::correlation(method = method, p_adjust = p.adj)
+
   network
 }
