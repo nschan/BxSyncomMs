@@ -313,6 +313,13 @@
       "Repository": "CRAN",
       "Hash": "543776ae6848fde2f48ff3816d0628bc"
     },
+    "bayestestR": {
+      "Package": "bayestestR",
+      "Version": "0.8.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "193ab1e887e1b532442087538f79df86"
+    },
     "biomformat": {
       "Package": "biomformat",
       "Version": "1.16.0",
@@ -452,6 +459,13 @@
       "Repository": "CRAN",
       "Hash": "94d63622fa8251219092b34de47a4136"
     },
+    "correlation": {
+      "Package": "correlation",
+      "Version": "0.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "6c99d05bc50f5f12126991f70cbd376d"
+    },
     "corrr": {
       "Package": "corrr",
       "Version": "0.4.2",
@@ -541,6 +555,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "d0509913b27ea898189ee664b6030dc2"
+    },
+    "effectsize": {
+      "Package": "effectsize",
+      "Version": "0.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "cd7801b2f50f5c212cf9b23fe6eaacc9"
     },
     "ellipsis": {
       "Package": "ellipsis",
@@ -841,6 +862,13 @@
       "Repository": "CRAN",
       "Hash": "7b1f856410253d56ea67ad808f7cdff6"
     },
+    "insight": {
+      "Package": "insight",
+      "Version": "0.12.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "289744a551d87fb383e23c823aaf88c6"
+    },
     "isoband": {
       "Package": "isoband",
       "Version": "0.2.2",
@@ -1049,6 +1077,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "b3209c62052922b6c629544d94c8fa8a"
+    },
+    "parameters": {
+      "Package": "parameters",
+      "Version": "0.11.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "013fe29af730395ed9c729b9437db84c"
     },
     "patchwork": {
       "Package": "patchwork",
