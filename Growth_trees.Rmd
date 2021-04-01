@@ -24,14 +24,15 @@ This file documents the isolate analysis for Schandry, et al., 2020
 
 ## Load libraries
 
-```{r eval = T, message = F}
+```{r setup, eval = T, message = F}
 library(tidyverse)
 library(magrittr)
 library(DECIPHER)
 library(phangorn)
 library(patchwork)
 library(ggtree)
-require(wesanderson)
+library(wesanderson)
+library(motmot)
 source("functions/read_fasta.R")
 ```
 
@@ -65,6 +66,262 @@ fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
  rearrangement = "stochastic", control = pml.control(trace = 0))
 write_rds(fit_GTR, "files_publication/Strain_tree.rds")
 ```
+
+Make tree of 16S and gyrB concatenated
+
+```{r}
+Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
+  as.data.frame() %>%
+    set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+all_16s <- bind_rows(Root_16S,Soil_16S) 
+all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("gyrB") %>% 
+  rownames_to_column("Strain") 
+phenotyped_set_16s_gyrB <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB)) %>% filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
+
+relevant_gyrB_16S <- phenotyped_set_16s_gyrB %$% DNAStringSet(seq)
+names(relevant_gyrB_16S) <- phenotyped_set_16s_gyrB$Strain
+
+
+
+seqs_aligned <- AlignSeqs(relevant_gyrB_16S, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB.rds")
+```
+
+Make tree of 16S, gyrB and rpoB concat
+
+```{r}
+Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
+  as.data.frame() %>%
+    set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+all_16s <- bind_rows(Root_16S,Soil_16S) 
+all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("gyrB") %>% 
+  rownames_to_column("Strain") 
+all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rpoB") %>% 
+  rownames_to_column("Strain") 
+
+phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB)) %>% filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
+
+relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
+names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
+
+
+
+seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB.rds")
+```
+Make tree of 16S, gyrB rpoB and recA concat
+
+```{r}
+Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
+  as.data.frame() %>%
+    set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+all_16s <- bind_rows(Root_16S,Soil_16S) 
+all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("gyrB") %>% 
+  rownames_to_column("Strain") 
+all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rpoB") %>% 
+  rownames_to_column("Strain") 
+all_recA <- read_fasta("files_publication/AtSphere_recA.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("recA") %>% 
+  rownames_to_column("Strain") 
+
+phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA)) %>% 
+        filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
+
+relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
+names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
+
+
+
+seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB_recA.rds")
+```
+
+Make tree of 16S, gyrB rpoB and recA and dnaJ concat
+
+```{r}
+Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
+  as.data.frame() %>%
+    set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+all_16s <- bind_rows(Root_16S,Soil_16S) 
+all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("gyrB") %>% 
+  rownames_to_column("Strain") 
+all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rpoB") %>% 
+  rownames_to_column("Strain") 
+all_recA <- read_fasta("files_publication/AtSphere_recA.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("recA") %>% 
+  rownames_to_column("Strain") 
+all_dnaJ <- read_fasta("files_publication/AtSphere_dnaJ.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("dnaJ") %>% 
+  rownames_to_column("Strain") 
+all_atpD <- read_fasta("files_publication/AtSphere_aptD.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("atpD") %>% 
+  rownames_to_column("Strain") 
+
+phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD)) %>% 
+        filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
+
+relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
+names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
+
+
+
+seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD.rds")
+```
+Make tree of 16S, gyrB, rpoB, recA, atpD, dnaJ and thrC concat
+
+```{r}
+Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
+  as.data.frame() %>%
+    set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rRNA16S") %>%
+  rownames_to_column("Strain")
+all_16s <- bind_rows(Root_16S,Soil_16S) 
+all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("gyrB") %>% 
+  rownames_to_column("Strain") 
+all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("rpoB") %>% 
+  rownames_to_column("Strain") 
+all_recA <- read_fasta("files_publication/AtSphere_recA.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("recA") %>% 
+  rownames_to_column("Strain") 
+all_dnaJ <- read_fasta("files_publication/AtSphere_dnaJ.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("dnaJ") %>% 
+  rownames_to_column("Strain") 
+all_atpD <- read_fasta("files_publication/AtSphere_aptD.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("atpD") %>% 
+  rownames_to_column("Strain") 
+all_thrC <- read_fasta("files_publication/AtSphere_thrC.fasta") %>%
+  as.data.frame() %>% 
+  set_colnames("thrC") %>% 
+  rownames_to_column("Strain") 
+
+phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+        filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
+
+relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
+names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
+
+
+
+seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
 
 # Refined Taxonomic database
 
@@ -112,7 +369,8 @@ tree_data <- AUC_emmeans %>%
   mutate(id = str_c(Genus,Strain ,sep ="_"))
 
 ### read tree
-fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR <- read_rds("files_publication/Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
 fit_GTR$tree$tip.label %<>%
   as.data.frame() %>% 
   set_colnames("Strain") %>%
@@ -407,6 +665,59 @@ AUC_emmeans %>% filter(Phylum == "Firmicutes") %>% dplyr::select(Genus) %>% uniq
 AUC_emmeans %>% colnames
 ```
 
+## Actinomycetia
+
+```{r}
+Actinomycetia <- AUC_emmeans %>% filter(Class == "Actinomycetia") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+```
+
+```{r}
+not_actmy <- Actinomycetia$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Actinomycetia_tree <- drop.tip(tree_structure, not_actmy) 
+```
+
+```{r}
+Actinomycetia_tree <- Actinomycetia_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+```
+
+
+```{r}
+Actinomycetia_tree_boa <- gheatmap(Actinomycetia_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish) +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Actinomycetia")+
+  layout_dendrogram() +
+    geom_tippoint(aes(color = Genus)) +
+    ggthemes::scale_color_hc()
+Actinomycetia_tree_boa_apo <- gheatmap(Actinomycetia_tree_boa, 
+         tree_data_apo,
+         offset=2,
+         width=0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish)
+```
+
+```{r}
+Actinomycetia_tree_boa_apo
+```
 ## Commamodaceae
 
 ```{r}
@@ -540,10 +851,11 @@ Rhizobia <- AUC_emmeans %>% filter(Family == "Rhizobiaceae") %>% dplyr::select(G
 ```{r}
 not_rhizobium <- Rhizobia$id %>% 
   {setdiff(tree_data$id %>% unique,.)}
-Rhizobia_tree <- drop.tip(tree_structure, not_rhizobium)
+
 ```
 
 ```{r}
+Rhizobia_tree <- drop.tip(tree_structure, not_rhizobium)
 Rhizobia_tree <- Rhizobia_tree %>%
   ggtree(branch.length = "none",
          layout = "rectangular",
@@ -552,7 +864,9 @@ Rhizobia_tree <- Rhizobia_tree +
   layout_dendrogram() + 
   ggtitle("Rhizobia") +
     geom_tippoint(aes(color = Genus), size = 2) +
+
     scale_color_manual(values = wesanderson::wes_palette("BottleRocket2", 2 ,"discrete"))
+Rhizobia_tree
 ```
 
 
@@ -628,9 +942,6 @@ Root708 seems to grow particularily well in BOA
 AUC_emmeans %>% filter(Strain == "Root708") %>% 
   dplyr::select(Treat.x, estimate) %>% unique
 ```
-
-
-
 
 ## Xanthomonadaceae
 
@@ -1189,22 +1500,1348 @@ Flavobacteriaceae_tree_boa_apo
 ## Less stringent subsets
 
 ```{r}
-(Rhizobia_tree_boa_apo + Xantho_tree_boa_apo +
-   Microbacteria_tree_boa_apo + Firmi_tree_boa_apo) +
-  plot_annotation(tag_levels = c("A")) &
-  theme(legend.position = "bottom",
-        legend.title = element_blank(),
-        plot.title = element_text(hjust = 0.5)) &
-  #plot_layout(guides = "collect")  &
-#  theme(legend.position = "left") &
-  guides(fill =FALSE) 
+Rhizobia <- AUC_emmeans %>% filter(Order == "Rhizobiales") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
 ```
 
 ```{r}
-(Rhizobia_tree_boa_apo + Xantho_tree_boa_apo + Microbacteria_tree_boa_apo + Firmi_tree_boa_apo +
-  plot_layout(guides = "collect")  &
-  theme(legend.position = "left") &
-  guides(fill =FALSE))
+not_rhizobium <- Rhizobia$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Rhizobia_tree <- drop.tip(tree_structure, not_rhizobium)
+```
+
+```{r}
+Rhizobia_tree <- Rhizobia_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Rhizobia_tree <- Rhizobia_tree + 
+  layout_dendrogram() + 
+  ggtitle("Rhizobiales") +
+  geom_tippoint(aes(color = Genus), size = 2)
+```
+
+
+```{r}
+Rhizobia_tree_boa <- gheatmap(Rhizobia_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Rhizobiales, BOA") 
+
+
+Rhizobia_tree_boa
+```
+
+```{r}
+Rhizobia_tree_boa_apo <- gheatmap(Rhizobia_tree_boa, 
+         tree_data_apo,
+         offset=1.8,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Rhizobiales") +
+  theme(legend.position = "left")
+Rhizobia_tree_boa_apo
+```
+
+# Phylosig
+
+## All
+
+```{r}
+apo_50um_sorted <- motmot::sortTraitData(phy = fit_GTR$tree %>%
+                                   multi2di() ,
+                                 y = tree_data_apo,
+                                 data.name = "50µM APO",
+                                 log.trait = FALSE,
+                                 pass.ultrametric = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted$phy,
+            x = apo_50um_sorted$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted$phy,
+            x = apo_50um_sorted$trait,
+            method = "lambda",
+            test = TRUE)
+
+```
+## Gram pos
+
+```{r}
+grampos_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Actinomycetia","Bacilli")) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_grampos <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+  filter(Strain %in% grampos_strains) %>%
+  filter(Strain != "Root763") 
+  
+
+grampos_concat_seqs <- phenotyped_set_concat_grampos %$% DNAStringSet(seq)
+names(grampos_concat_seqs) <- phenotyped_set_concat_grampos$Strain
+```
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(grampos_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Grampos_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_grampos <- tree_plot_data %>% filter(Strain %in% grampos_strains)
+tree_data_grampos_apo <- tree_data_grampos %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_grampos <- read_rds("files_publication/Grampos_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_grampos$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+```{r}
+apo_50um_sorted_grampos <- motmot::sortTraitData(phy = fit_GTR_grampos$tree %>%
+                                                     multi2di() ,
+                                                   y = tree_data_grampos_apo,
+                                                   data.name = "50µM APO",
+                                                   log.trait = FALSE,
+                                                   pass.ultrametric = TRUE)
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_grampos$phy,
+            x = apo_50um_sorted_grampos$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_grampos$phy,
+            x = apo_50um_sorted_grampos$trait,
+            method = "lambda",
+            test = TRUE)
+```
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_grampos$tree %>% as.phylo
+groupInfo <- split(fit_GTR_grampos$tree$tip.label, gsub("_\\w+", "", fit_GTR_grampos$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Actinomycetia", "Bacilli" )) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(fit_GTR_grampos$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop)
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family, shape = Class), size = 4) 
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Gram positives") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Gram positives, APO")
+grampos_tree <- subset_tree_boa_apo
+```
+
+```{r}
+grampos_tree +
+  theme(text = element_text(family = "NimbusMon"))
+```
+
+
+## Actinomycetia
+
+```{r}
+actinomycetia_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Actinomycetia")) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_actinomyc <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+  filter(Strain %in% actinomycetia_strains) %>%
+  filter(Strain != "Root763") 
+  
+
+actinomyc_concat_seqs <- phenotyped_set_concat_actinomyc %$% DNAStringSet(seq)
+names(actinomyc_concat_seqs) <- phenotyped_set_concat_actinomyc$Strain
+```
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(actinomyc_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Actinomycetia_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_actinomyc <- tree_plot_data %>% filter(Strain %in% actinomycetia_strains)
+tree_data_actinomyc_apo <- tree_data_actinomyc %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_actinomyc <- read_rds("files_publication/Actinomycetia_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_actinomyc$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+```{r}
+apo_50um_sorted_actinomyc <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree %>%
+                                                     multi2di() ,
+                                                   y = tree_data_actinomyc_apo,
+                                                   data.name = "50µM APO",
+                                                   log.trait = FALSE,
+                                                   pass.ultrametric = TRUE)
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_actinomyc$phy,
+            x = apo_50um_sorted_actinomyc$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_actinomyc$phy,
+            x = apo_50um_sorted_actinomyc$trait,
+            method = "lambda",
+            test = TRUE)
+```
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_actinomyc$tree %>% as.phylo
+groupInfo <- split(fit_GTR_actinomyc$tree$tip.label, gsub("_\\w+", "", fit_GTR_actinomyc$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Actinomycetia" )) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(tree_data_actinomyc_apo$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop)
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family, shape = Class), size = 4) 
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Proteobacteria") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Actinomycetia, APO")
+actinomyc_tree <- subset_tree_boa_apo
+```
+
+```{r}
+actinomyc_tree
+```
+
+## Bacilli
+
+```{r}
+baci_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Bacilli")) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_baci <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+  filter(Strain %in% baci_strains) %>%
+  filter(Strain != "Root763") 
+  
+
+baci_concat_seqs <- phenotyped_set_concat_baci %$% DNAStringSet(seq)
+names(baci_concat_seqs) <- phenotyped_set_concat_baci$Strain
+```
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(baci_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Bacilli_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_baci <- tree_plot_data %>% filter(Strain %in% baci_strains)
+tree_data_baci_apo <- tree_data_baci %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_baci <- read_rds("files_publication/Bacilli_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_baci$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+```{r}
+apo_50um_sorted_baci <- motmot::sortTraitData(phy = fit_GTR_baci$tree %>%
+                                                     multi2di() ,
+                                                   y = tree_data_baci_apo,
+                                                   data.name = "50µM APO",
+                                                   log.trait = FALSE,
+                                                   pass.ultrametric = TRUE)
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_baci$phy,
+            x = apo_50um_sorted_baci$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_baci$phy,
+            x = apo_50um_sorted_baci$trait,
+            method = "lambda",
+            test = TRUE)
+```
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_baci$tree %>% as.phylo
+groupInfo <- split(fit_GTR_baci$tree$tip.label, gsub("_\\w+", "", fit_GTR_baci$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Bacilli" )) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(tree_data_baci_apo$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop)
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family, shape = Class), size = 4) 
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Proteobacteria") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Bacilli, APO")
+bacilli_tree <- subset_tree_boa_apo
+```
+
+```{r}
+bacilli_tree
+```
+
+## Proteobacteria
+
+```{r}
+proteobacteria_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Alphaproteobacteria", "Betaproteobacteria", "Gammaproteobacteria" )) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_proteo <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+  filter(Strain %in% proteobacteria_strains) %>%
+  filter(Strain != "Root763") 
+  
+
+proteo_concat_seqs <- phenotyped_set_concat_proteo %$% DNAStringSet(seq)
+names(proteo_concat_seqs) <- phenotyped_set_concat_proteo$Strain
+```
+
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(proteo_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_proteo <- tree_plot_data %>% filter(Strain %in% proteobacteria_strains)
+tree_data_proteo_apo <- tree_data_proteo %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_proteo <- read_rds("files_publication/Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_proteo$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+
+```{r}
+apo_50um_sorted_proteo <- motmot::sortTraitData(phy = fit_GTR_proteo$tree %>%
+                                   multi2di() ,
+                                 y = tree_data_proteo_apo,
+                                 data.name = "50µM APO",
+                                 log.trait = FALSE,
+                                 pass.ultrametric = TRUE)
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
+            x = apo_50um_sorted_proteo$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
+            x = apo_50um_sorted_proteo$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_proteo$tree %>% as.phylo
+groupInfo <- split(fit_GTR_proteo$tree$tip.label, gsub("_\\w+", "", fit_GTR_proteo$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Alphaproteobacteria", "Betaproteobacteria", "Gammaproteobacteria" )) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(tree_data_proteo_apo$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop)
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family, shape = Class), size = 4) 
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Proteobacteria") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Proteobacteria, APO")
+proteo_tree <- subset_tree_boa_apo
+```
+
+```{r}
+proteo_tree
+```
+
+```{r}
+caulo <- AUC_emmeans %>% filter(Family == "Caulobacteraceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+not_caulo <- caulo$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+caulo_tree <- drop.tip(tree_structure, not_caulo)
+
+caulo_tree <- caulo_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+caulo_tree <- caulo_tree + 
+  layout_dendrogram() + 
+  geom_tiplab(angle = 30) 
+caulo_tree
+```
+```{r}
+xanth <- AUC_emmeans %>% filter(Family == "Xanthomonadaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+not_xanth <- xanth$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+xanth_tree <- drop.tip(tree_structure, not_xanth)
+
+xanth_tree <- xanth_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+xanth_tree <- xanth_tree + 
+  layout_dendrogram() + 
+  geom_tiplab(angle = 30) 
+xanth_tree
+```
+```{r}
+sphing <- AUC_emmeans %>% filter(Family == "Sphingomonadaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+not_sphing <- sphing$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+sphing_tree <- drop.tip(tree_structure, not_sphing)
+
+sphing_tree <- sphing_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+sphing_tree <- sphing_tree + 
+  layout_dendrogram() + 
+  geom_tiplab(angle = 30) 
+sphing_tree
+```
+
+## Betaproteo
+
+```{r}
+## Proteobacteria
+
+bproteobacteria_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Betaproteobacteria")) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_bproteo <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+  filter(Strain %in% bproteobacteria_strains) %>% filter(Strain != "Root763") 
+  
+
+bproteo_concat_seqs <- phenotyped_set_concat_bproteo %$% DNAStringSet(seq)
+names(bproteo_concat_seqs) <- phenotyped_set_concat_bproteo$Strain
+```
+
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(bproteo_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Beta_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_bproteo <- tree_plot_data %>% filter(Strain %in% bproteobacteria_strains)
+tree_data_bproteo_apo <- tree_data_bproteo %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_bproteo <- read_rds("files_publication/Beta_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_bproteo$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+```{r}
+apo_50um_sorted_beta <- motmot::sortTraitData(phy = fit_GTR_bproteo$tree %>% multi2di() ,
+                                              y = tree_data_bproteo_apo,
+                                              data.name = "50µM APO", 
+                                              log.trait = FALSE,
+                                              pass.ultrametric = TRUE)
+phylosignal(x = apo_50um_sorted_beta$trait,phy = apo_50um_sorted_beta$phy)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_beta$phy,
+            x = apo_50um_sorted_beta$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_beta$phy,
+            x = apo_50um_sorted_beta$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_bproteo$tree %>% as.phylo
+groupInfo <- split(fit_GTR_bproteo$tree$tip.label, gsub("_\\w+", "", fit_GTR_bproteo$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Betaproteobacteria")) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(tree_data$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop)
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family), size = 2) 
+
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Beta Proteobacteria") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Beta Proteobacteria, APO")
+bproteo_tree <- subset_tree_boa_apo
+```
+
+```{r}
+bproteo_tree
+```
+
+
+## Alphaproteo
+
+```{r}
+## Alphaproteo
+
+aproteobacteria_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Alphaproteobacteria")) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_aproteo <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>%   
+  filter(Strain %in% aproteobacteria_strains) %>% filter(Strain != "Root763") 
+  
+
+aproteo_concat_seqs <- phenotyped_set_concat_aproteo %$% DNAStringSet(seq)
+names(aproteo_concat_seqs) <- phenotyped_set_concat_aproteo$Strain
+```
+
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(aproteo_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Alpha_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_aproteo <- tree_plot_data %>% filter(Strain %in% aproteobacteria_strains)
+tree_data_aproteo_apo <- tree_data_aproteo %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_aproteo <- read_rds("files_publication/Alpha_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_aproteo$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+```{r}
+apo_50um_sorted_alpha <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
+                                        # # drop.tip(c("Ensifer_Root258", 
+                                        #            "Ensifer_Root74",
+                                        #            "Phenylobacterium_Root77",
+                                        #            "Sphingomonas_Root720")) %>%
+                                         multi2di(), y = tree_data_aproteo_apo, data.name = "50µM APO",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
+            x = apo_50um_sorted_alpha$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
+            x = apo_50um_sorted_alpha$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_aproteo$tree %>% as.phylo
+groupInfo <- split(fit_GTR_aproteo$tree$tip.label, gsub("_\\w+", "", fit_GTR_aproteo$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Alphaproteobacteria")) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(tree_data$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop) 
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family), size = 2) 
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Alpha Proteobacteria") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Alpha Proteobacteria, APO")
+aproteo_tree <- subset_tree_boa_apo
+```
+
+```{r}
+aproteo_tree
+```
+### Rhizobiales
+
+```{r}
+Rhizobia <- AUC_emmeans %>% filter(Order == "Rhizobiales") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+
+not_rhizobia <- Rhizobia$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+apo_50um_sorted_rhizobiales <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
+                                        drop.tip(not_rhizobia) %>%
+                                         multi2di(),
+                                        y = tree_data_aproteo_apo, data.name = "50µM APO",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_rhizobiales$phy,
+            x = apo_50um_sorted_rhizobiales$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_rhizobiales$phy,
+            x = apo_50um_sorted_rhizobiales$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+
+## Gammaproteo
+
+```{r}
+## Proteobacteria
+
+gproteobacteria_strains <- AUC_emmeans %>%
+  filter(Class %in% c("Gammaproteobacteria")) %$%
+  Strain %>% 
+  unique
+phenotyped_set_concat_gproteo <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
+  left_join(all_rpoB, by = "Strain") %>% 
+  left_join(all_recA, by = "Strain") %>% 
+  left_join(all_dnaJ, by = "Strain") %>% 
+  left_join(all_atpD, by = "Strain") %>% 
+  left_join(all_thrC, by = "Strain") %>% 
+  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD,thrC)) %>% 
+   filter(Strain %in% gproteobacteria_strains) %>% filter(Strain != "Root763") 
+  
+
+gproteo_concat_seqs <- phenotyped_set_concat_gproteo %$% DNAStringSet(seq)
+names(gproteo_concat_seqs) <- phenotyped_set_concat_gproteo$Strain
+```
+
+
+```{r eval =F}
+seqs_aligned <- AlignSeqs(gproteo_concat_seqs, anchor=NA)
+
+### Make tree
+phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
+dist_m <- dist.ml(phang_align)
+tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
+fit = pml(tree_NJ, data=phang_align)
+### Make GTR tree
+fit_GTR <- update(fit, k=4, inv=0.2)
+fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
+ rearrangement = "stochastic", control = pml.control(trace = 0))
+write_rds(fit_GTR, "files_publication/Gamma_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+```
+
+```{r}
+tree_data_gproteo <- tree_plot_data %>% filter(Strain %in% gproteobacteria_strains)
+tree_data_gproteo_apo <- tree_data_gproteo %>% 
+           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
+           column_to_rownames("id") %>% 
+           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+### read tree
+#fit_GTR <- read_rds("files_publication/Strain_tree.rds")
+fit_GTR_gproteo <- read_rds("files_publication/Gamma_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+fit_GTR_gproteo$tree$tip.label %<>%
+  as.data.frame() %>% 
+  set_colnames("Strain") %>%
+  left_join(., ( AUC_emmeans %>% dplyr::select(Strain, Genus) %>% distinct)) %>%
+  mutate(Strain = str_c(Genus,Strain, sep ="_")) %>%
+  dplyr::select(-Genus) %>%
+  as.vector() %>%
+  unlist %>%
+  unname
+```
+
+```{r}
+apo_50um_sorted_gamma <- motmot::sortTraitData(phy = fit_GTR_gproteo$tree %>% multi2di() , y = tree_data_gproteo_apo, data.name = "50µM APO")
+phylosignal(phy = apo_50um_sorted_gamma$phy,x = apo_50um_sorted_gamma$trait)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
+            x = apo_50um_sorted_gamma$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
+            x = apo_50um_sorted_gamma$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+### Tree
+
+```{r}
+tree_structure <- fit_GTR_gproteo$tree %>% as.phylo
+groupInfo <- split(fit_GTR_gproteo$tree$tip.label, gsub("_\\w+", "", fit_GTR_gproteo$tree$tip.label))
+tree_structure <- groupOTU(tree_structure, groupInfo)
+ids_to_keep <- AUC_emmeans %>%
+  filter(Class %in% c("Gammaproteobacteria" )) %>%
+  dplyr::select(Genus, Strain) %>% 
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+drop <-  setdiff(tree_data$id %>% unique,ids_to_keep$id)
+subset_tree <- drop.tip(tree_structure, drop)
+
+subset_tree <- subset_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+subset_tree <- subset_tree + 
+  layout_dendrogram() + 
+  geom_tippoint(aes(color = Family), size = 2) 
+
+subset_tree_boa <- gheatmap(subset_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+subset_tree_boa_apo <- gheatmap(subset_tree_boa, 
+         tree_data_apo,
+         offset = 1.55,
+         width = 0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Gamma Proteobacteria") +
+  theme(legend.position = "left")
+
+subset_tree_boa_apo <- gheatmap(subset_tree, 
+         tree_data_apo,
+         offset = 0.8,
+         width = 0.2,
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Gamma Proteobacteria, APO")
+gproteo_tree <- subset_tree_boa_apo
+```
+
+```{r}
+gproteo_tree
+```
+
+
+
+# Only Tests
+
+## All
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted$phy,
+            x = apo_50um_sorted$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted$phy,
+            x = apo_50um_sorted$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+## Proteo
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
+            x = apo_50um_sorted_proteo$trait,
+            method = "K",
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
+            x = apo_50um_sorted_proteo$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+### Alpha
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
+            x = apo_50um_sorted_alpha$trait,
+            method = "K",
+            test = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
+            x = apo_50um_sorted_alpha$trait,
+            method = "lambda",
+            test = TRUE)
+```
+### beta
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_beta$phy,
+            x = apo_50um_sorted_beta$trait,
+            method = "K",
+            test = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_beta$phy,
+            x = apo_50um_sorted_beta$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+### gamma
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
+            x = apo_50um_sorted_gamma$trait,
+            method = "K",
+            test = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
+            x = apo_50um_sorted_gamma$trait,
+            method = "lambda",
+            test = TRUE)
+```
+
+
+# Tmp stuff
+
+```{r}
+polytomous <- c(which(rownames(tree_data_proteo_apo) == "Ensifer_Root258"),
+                which(row.names(tree_data_proteo_apo) == "Ensifer_Root74"),
+                which(row.names(tree_data_proteo_apo) == "Phenylobacterium_Root77"),
+                which(row.names(tree_data_proteo_apo) == "Sphingomonas_Root720"))
 ```
 
 # SessionInfo

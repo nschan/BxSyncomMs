@@ -1,5 +1,5 @@
 ---
-title: "Supplemental Tables for: Plant-derived benzoxazinoids act as antibiotics and shape bacterial communities"
+title: "Supplemental Material for: Plant-derived benzoxazinoids act as antibiotics and shape bacterial communities"
 author: "Niklas Schandry, Katharina Jandrasits, Ruben Garrido-Oter, Claude Becker"
 output:
   pdf_document:
@@ -12,7 +12,9 @@ output:
 library(magrittr)
 ```
 
-# Table S1. Syncom strains
+# Tables
+
+## Table S1. Syncom strains
 
 ```{r echo =F}
 readr::read_rds("files_publication/syncom_membership.rds") %>% 
@@ -24,7 +26,7 @@ readr::read_rds("files_publication/syncom_membership.rds") %>%
 
 \newpage
 
-# Table S2. PERMANOVA
+## Table S2. PERMANOVA
 
 ```{r echo=F}
 readr::read_rds("files_publication/TabS2_permanova_gt.rds") %>% 
@@ -33,7 +35,7 @@ readr::read_rds("files_publication/TabS2_permanova_gt.rds") %>%
 
 \newpage
 
-# Table S3. PERMANOVA comparing only two treatments
+## Table S3. PERMANOVA comparing only two treatments
 
 ```{r echo = F}
 readr::read_rds("files_publication/TabS3_PERMANOVA_per_treatment_gt.rds") %>% 
@@ -42,7 +44,7 @@ readr::read_rds("files_publication/TabS3_PERMANOVA_per_treatment_gt.rds") %>%
 
 \newpage
 
-# Table S4. ANOVA: Observed taxa
+## Table S4. ANOVA: Observed taxa
 
 ```{r echo=F}
 readr::read_rds("files_publication/TabS4_AOV_observed.rds") %>% 
@@ -51,7 +53,7 @@ readr::read_rds("files_publication/TabS4_AOV_observed.rds") %>%
 
 \newpage
 
-# Table S5. Observed diversity means and pairwise comparisons
+## Table S5. Observed diversity means and pairwise comparisons
 
 ```{r echo=F}
 readr::read_rds("files_publication/TabS5_overserved_pairwise.rds")  %>% 
@@ -60,7 +62,7 @@ readr::read_rds("files_publication/TabS5_overserved_pairwise.rds")  %>%
 
 \newpage
 
-# Table S6. ANOVA: Shannon Diversity
+## Table S6. ANOVA: Shannon Diversity
 
 ```{r echo=F}
 readr::read_rds("files_publication/TabS6_AOV_shannon.rds") %>% 
@@ -69,10 +71,30 @@ readr::read_rds("files_publication/TabS6_AOV_shannon.rds") %>%
 
 \newpage
 
-# Table S7. Shannon diversity means and pairwise comparisons
+## Table S7. Shannon diversity means and pairwise comparisons
 
 ```{r echo=F}
 readr::read_rds("files_publication/TabS7_shannon_pairwise.rds") %>% 
   gt::as_latex()
 ```
 
+# Figures
+
+## Supplemental Figure 1
+
+![](Supplemental_Figures/Figure_S1.png)
+**Supplemental Figure 1. Observed alpha diversity.** The number of observed bacterial genera of the samples belonging to the four different syncoms (**A-D**) is shown for each time point (facet) and treatment (color). Each sample is plotted as a dot, and box-and-whisker plots show the summary statistics for each treatment / time point combination.
+
+\newpage
+
+## Supplemental Figure 2
+
+![](Supplemental_Figures/Figure_S2.png)
+**Supplemental Figure 2. Shannon diversity indices of the synthetic communities.** The Shannon indices of the samples belonging to the four different syncoms (*A-D*) are shown for each time point (facet) and treatment (color). Each sample is plotted as a dot, and box-and-whisker plots show the summary statistics for each treatment / time point combination.
+
+\newpage
+
+## Supplemental Figure 3
+
+![](Supplemental_Figures/Figure_S3.png)
+**Supplemental Figure 3. Correlation networks.** Networks of isolate Pearson’s correlations in the random **(A)** and tolerant **(B)** syncom. Each individual plot shows correlations between isolates for one time point and treatment combination. The color of each edge indicates the strength, and sign of the correlation (blue: negative correlation; yellow: positive) and each node represents one isolate. The background color of the node label indicates whether an isolate was part of both communities (white) or only included in one (gray). Only correlations where |r| > 0.5 were included.

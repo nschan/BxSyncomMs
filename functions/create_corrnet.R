@@ -8,8 +8,8 @@
 #' @param treatment the treatment of interest
 #' @param OTUcol which taxonomic rank
 #' @param mincounts minimum counts required to retain taxon, default is 99
-#' @param method the correlation coefficient calculated, default is spearman, see corrr::correlate
-#' @param use see corrr::correlate, how to deal with missing data?
+#' @param method the correlation coefficient calculated, default is spearman, see correlation::correlation
+#' @param use see correlation::correlation, how to deal with missing data?
 #' @author Niklas Schandry
 
 create_corrnet <- function(phyl,
