@@ -49,7 +49,7 @@ compare_conditions <- function(phyl = NULL,
       cat(paste(c(curr_level,"\n")))
       tmp_dat <- phyl %>% 
       sample_data() %>% 
-      as("data.frame") 
+        as("data.frame") 
       tmp_dat$split_by = tmp_dat[,eval(split_var)]
       
       tmp_dat <- tmp_dat %>% dplyr::filter(split_by == paste(curr_level))

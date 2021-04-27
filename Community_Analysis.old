@@ -1,0 +1,3915 @@
+---
+title: "Syncom community analysis"
+author: "Niklas Schandry"
+date: "2020"
+output: 
+  html_document:
+    fig_caption: yes
+## Widescreen figures
+    fig_height: 9
+    fig_width: 16
+## Highlighting    
+    highlight: zenburn
+    theme: cosmo
+### TOC    
+    toc: yes
+    toc_float: yes
+---
+
+# About
+
+This file documents the community analysis and figure generation for Schandry, et al., 2021, bioRxiv.
+Currently this document is subject to change.
+
+# Prepare session
+
+## Libraries and functions
+
+```{r setup, message = F}
+library(tidyverse)
+library(phyloseq)
+library(patchwork)
+library(magrittr)
+library(ggnetwork)
+library(emmeans)
+library(vegan)
+library(correlation)
+
+source("functions/get_counts_and_overlay.R")
+source("functions/phyloseq_corrs.R")
+source("functions/overlay_corrnet.R")
+source("functions/fix_node_placement.R")
+source("functions/compare_conditions.R")
+source("functions/read_fasta.R")
+```
+
+```{r}
+syncom_colors <- c("Random" = "#666699",
+                  "Tolerant" = "#9BCB40",
+                  "Mixed" = "#B6539F",
+                  "Sensitive" = "#FEE377")
+```
+
+
+# Data removal
+
+Replicate 1, appears to have issues that are more pronounced in some samples than in others. This replicate is removed from all Syncoms, leaving four replicates.
+
+# Prepare Data
+
+## General data
+
+```{r}
+tax_info <- read_rds("files_publication/taxonomy.rds")
+### read growth data
+AUC_emmeans <- read_rds("files_publication/AUC_emmeans_pub.rds") %>% 
+  left_join(tax_info %>%
+            dplyr::select(Genus, Class, Order), by = "Genus")
+AUC_vals <- AUC_emmeans %>% 
+             mutate(Chem_conc = paste0(Chem,Conc)) %>% 
+             dplyr::select(Strain, Chem_conc, AUC) %>%
+             pivot_wider(id_cols = Strain, names_from = Chem_conc, values_from = AUC,
+                         values_fn = mean) %>%
+             as.data.frame() %>% 
+             dplyr::mutate(Control = `0_Control0`) %>% 
+             dplyr::select("Strain","APO50", "BOA100", "Control" ) 
+syncoms_memberships <- read_rds("files_publication/syncom_membership.rds")
+```
+
+## Syncom Members
+
+### Tab S1
+
+```{r}
+syncoms_memberships %>% 
+  group_by(Syncom) %>% 
+  arrange(Genus) %>% 
+  gt::gt()
+```
+
+
+## Random
+
+```{r read objects for phyloseq random}
+# Read sequence table
+syncomRandom_noChim    <-  readRDS("files_publication/syncom_full_random_seqtable_nochim.rds")
+syncomRandom_tax       <-  dada2::assignTaxonomy(seqs = syncomRandom_noChim,
+                                    "files_publication/syncom_full_random_16SrRNA.fasta",
+                                     taxLevels = c("Kingdom", "Phylum", "Family", "Genus", "Strain"))
+syncomRandom_metadata  <-  readRDS("files_publication/Metadata_publication.rds") %>% 
+                              filter(Syncom == "Full_Random")
+
+syncomRandom_strains <-  read_rds("files_publication/syncom_full_random.rds") %>%
+  mutate(SynCom = "Random")
+```
+
+```{r}
+phyl_random <- phyloseq(otu_table(syncomRandom_noChim, taxa_are_rows =F),
+                  sample_data(syncomRandom_metadata),
+                  tax_table(syncomRandom_tax),
+                  phy_tree(read_rds("files_publication/syncom_full_random_GTR_tree.rds")$tree))
+
+phyl_random_glom_strain <- phyl_random %>%
+  subset_samples(Rep != "Rep_1") %>%
+  tax_glom("Strain")
+phyl_random_rel_strain <- transform_sample_counts(phyl_random_glom_strain, function(x) x / sum(x) ) 
+```
+
+## Tolerant
+
+```{r read objects for phyloseq tolerant}
+# Read sequence table
+syncomTolerant_noChim   <-  readRDS("files_publication/syncom_reduced_tolerant_seqtable_nochim.rds")
+
+syncomTolerant_tax      <- dada2::assignTaxonomy(seqs = syncomTolerant_noChim,
+                                     "files_publication/syncom_reduced_tolerant_16SrRNA.fasta",
+                                      taxLevels = c("Kingdom", "Phylum", "Family", "Genus", "Strain"))
+syncomTolerant_metadata <-  readRDS("files_publication/Metadata_publication.rds") %>%
+                          filter(Syncom == "Reduced_Tolerant")
+
+syncomTolerant_strains <-  read_rds("files_publication/syncom_reduced_tolerant.rds") %>%
+  mutate(SynCom = "Tolerant")
+```
+
+```{r}
+phyl_tolerant <- phyloseq(otu_table(syncomTolerant_noChim, taxa_are_rows =F),
+                  sample_data(syncomTolerant_metadata),
+                  tax_table(syncomTolerant_tax),
+                  phy_tree(read_rds("files_publication/syncom_reduced_tolerant_GTR_tree.rds")$tree))
+
+phyl_tolerant_glom_strain <- phyl_tolerant %>% 
+  subset_samples(Rep != "Rep_1") %>%
+  tax_glom("Strain")
+phyl_tolerant_rel_strain <- transform_sample_counts(phyl_tolerant_glom_strain, function(x) x / sum(x) ) 
+```
+
+## Mixed
+
+
+```{r read objects for phyloseq mixed}
+# Read sequence table
+syncomMixed_noChim <-  readRDS("files_publication/syncom_reduced_mixed_seqtable_nochim.rds")
+syncomMixed_tax <- dada2::assignTaxonomy(seqs = syncomTolerant_noChim,
+                                     "files_publication/syncom_reduced_mixed_16SrRNA.fasta",
+                                      taxLevels = c("Kingdom", "Phylum", "Family", "Genus", "Strain"))
+syncomMixed_metadata        <-  readRDS("files_publication/Metadata_publication.rds") %>%                                   filter(Syncom == "Reduced_Mixed")
+
+syncomMixed_strains <-  read_rds("files_publication/syncom_reduced_mixed.rds") %>%
+  mutate(SynCom = "Mixed")
+```
+
+```{r}
+phyl_mixed <- phyloseq(otu_table(syncomMixed_noChim, taxa_are_rows =F),
+                  sample_data(syncomMixed_metadata),
+                  tax_table(syncomMixed_tax),
+                  phy_tree(read_rds("files_publication/syncom_reduced_mixed_GTR_tree.rds")$tree))
+
+phyl_mixed_glom_strain <- phyl_mixed %>%
+  subset_samples(Rep != "Rep_1") %>%
+  tax_glom("Strain")
+phyl_mixed_rel_strain <- transform_sample_counts(phyl_mixed_glom_strain, function(x) x / sum(x) ) 
+```
+
+## Sensitive
+
+
+```{r read objects for phyloseq sensitive}
+# Read sequence table
+syncomSensitive_noChim <-  readRDS("files_publication/syncom_reduced_sensitive_seqtable_nochim.rds")
+syncomSensitive_tax <- dada2::assignTaxonomy(seqs = syncomTolerant_noChim,
+                                     "files_publication/syncom_reduced_sensitive_16SrRNA.fasta",
+                                      taxLevels = c("Kingdom", "Phylum", "Family", "Genus", "Strain"))
+syncomSensitive_metadata        <-  readRDS("files_publication/Metadata_publication.rds") %>%                                   filter(Syncom == "Reduced_Sensitive")
+
+syncomSensitive_strains <-  read_rds("files_publication/syncom_reduced_sensitive.rds") %>%
+  mutate(SynCom = "Tolerant")
+```
+
+```{r}
+phyl_sensitive <- phyloseq(otu_table(syncomSensitive_noChim, taxa_are_rows =F),
+                  sample_data(syncomSensitive_metadata),
+                  tax_table(syncomSensitive_tax),
+                  phy_tree(read_rds("files_publication/syncom_reduced_sensitive_GTR_tree.rds")$tree))
+
+phyl_sensitive_glom_strain <- phyl_sensitive %>%
+  subset_samples(Rep != "Rep_1") %>%
+  tax_glom("Strain")
+phyl_sensitive_rel_strain <- transform_sample_counts(phyl_sensitive_glom_strain, function(x) x / sum(x) ) 
+```
+
+
+## Estimate log2Fold changes
+
+```{r}
+all_lf2cs_no_time <- bind_rows(list(
+phyl_mixed_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F,
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Mixed", Treatment = "APO"),
+phyl_mixed_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA",
+                     treat2 = "Control",
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Mixed", Treatment = "BOA"),
+phyl_sensitive_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO", 
+                     treat2 = "Control", 
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F,
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Sensitive", Treatment = "APO"),
+phyl_sensitive_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F,
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Sensitive", Treatment = "BOA"),
+phyl_random_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO",
+                     treat2 = "Control",
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Random", Treatment = "APO"),
+phyl_random_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F,
+                     return_unfiltered = T) %>% 
+  mutate(Syncom = "Random", Treatment = "BOA"),
+phyl_tolerant_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Tolerant", Treatment = "APO"),
+phyl_tolerant_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F,
+                     return_unfiltered = T) %>%
+  mutate(Syncom = "Tolerant", Treatment = "BOA")))
+```
+
+```{r}
+all_lf2cs_per_time <- bind_rows(list(
+phyl_mixed_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO",
+                     treat2 = "Control",
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>% 
+  mutate(Syncom = "Mixed", Treatment = "APO"),
+phyl_mixed_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>%
+  mutate(Syncom = "Mixed", Treatment = "BOA"),
+phyl_sensitive_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO",
+                     treat2 = "Control", 
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>%
+  mutate(Syncom = "Sensitive", Treatment = "APO"),
+phyl_sensitive_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment", 
+                     treat1 = "BOA", 
+                     treat2 = "Control", 
+                     alpha = 0.05, 
+                     OTUcol = "Strain", 
+                     plot = F,
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>% 
+  mutate(Syncom = "Sensitive", Treatment = "BOA"),
+phyl_random_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO", 
+                     treat2 = "Control",
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>%
+  mutate(Syncom = "Random", Treatment = "APO"),
+phyl_random_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA",
+                     treat2 = "Control",
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>% 
+  mutate(Syncom = "Random", Treatment = "BOA"),
+phyl_tolerant_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "APO",
+                     treat2 = "Control",
+                     alpha = 0.05,
+                     OTUcol = "Strain",
+                     plot = F,
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>% 
+  mutate(Syncom = "Tolerant", Treatment = "APO"),
+phyl_tolerant_glom_strain %>% 
+  compare_conditions(treatvar = "Treatment",
+                     treat1 = "BOA", 
+                     treat2 = "Control",
+                     alpha = 0.05, 
+                     OTUcol = "Strain",
+                     plot = F, 
+                     return_unfiltered = T,
+                     split_var = "Timepoint") %>%
+  mutate(Syncom = "Tolerant", Treatment = "BOA")))
+```
+
+# Beta Diverstiy
+
+
+### CCA with jaccard
+
+```{r}
+cca_jaccard_random_rel_strain <-  phyl_random_rel_strain %>%
+  ordinate("CCA", "jaccard", formula = ~Treatment+Timepoint) 
+cca_jaccard_random_plot<- plot_ordination(phyl_random_rel_strain,
+                cca_jaccard_random_rel_strain,
+                color = "Treatment",
+                axes = c(1,2)) +
+  ggforce::geom_mark_ellipse(fill = "grey90") +
+  geom_point() +
+  facet_grid(~Timepoint) +
+  geom_point(size = 3) +
+  geom_point(size = 3, pch = 21, color = "black") +
+  ggtitle(paste("Random Syncom: CCA")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        strip.background = element_rect(fill = "white"))  
+
+cca_jaccard_tolerant_rel_strain <-  phyl_tolerant_rel_strain %>%
+  ordinate("CCA", "jaccard", formula = ~Treatment+Timepoint) 
+cca_jaccard_tolerant_plot <- plot_ordination(phyl_tolerant_rel_strain,
+                cca_jaccard_tolerant_rel_strain,
+                color = "Treatment",
+                axes = c(1,2)) +
+  ggforce::geom_mark_ellipse(fill = "grey90") +
+  geom_point() +
+  facet_grid(~Timepoint) +
+  geom_point(size = 3) +
+  geom_point(size = 3, pch = 21, color = "black") +
+  ggtitle(paste("Tolerant Syncom: CCA")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        strip.background = element_rect(fill = "white"))  
+
+cca_jaccard_mixed_rel_strain <-  phyl_mixed_rel_strain %>%
+  ordinate("CCA", "jaccard", formula = ~Treatment+Timepoint) 
+cca_jaccard_mixed_plot <- plot_ordination(phyl_mixed_rel_strain,
+                cca_jaccard_mixed_rel_strain,
+                color = "Treatment",
+                axes = c(1,2)) +
+  ggforce::geom_mark_ellipse(fill = "grey90") +
+  geom_point() +
+  facet_grid(~Timepoint) +
+  geom_point(size = 3) +
+  geom_point(size = 3, pch = 21, color = "black") +
+  ggtitle(paste("Mixed Syncom: CCA")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        strip.background = element_rect(fill = "white"))  
+
+cca_jaccard_sensitive_rel_strain <-  phyl_sensitive_rel_strain %>%
+  ordinate("CCA", "jaccard", formula = ~Treatment+Timepoint) 
+cca_jaccard_sensitve_plot <- plot_ordination(phyl_sensitive_rel_strain,
+                cca_jaccard_sensitive_rel_strain,
+                color = "Treatment",
+                axes = c(1,2)) +
+  ggforce::geom_mark_ellipse(fill = "grey90") +
+  geom_point() +
+  facet_grid(~Timepoint) +
+  geom_point(size = 3) +
+  geom_point(size = 3, pch = 21, color = "black") +
+  ggtitle(paste("Sensitive Syncom: CCA")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        strip.background = element_rect(fill = "white"))  
+```
+
+#### Fig2
+
+```{r}
+(cca_jaccard_random_plot | cca_jaccard_tolerant_plot) /
+(cca_jaccard_mixed_plot | cca_jaccard_sensitve_plot) +
+  plot_layout(guides = "collect",
+              heights = c(1,1)) +
+  plot_annotation(tag_levels = "A", caption = "Formula: Treatment + Timepoint") &
+  theme(text=element_text(family = "NimbusMon"), strip.background = element_rect(fill = "white"))
+```
+
+
+## PERMANOVA
+
+```{r}
+random_bray <- phyl_random_rel_strain %>% phyloseq::distance("bray")
+random_jaccard <- phyl_random_rel_strain %>% phyloseq::distance("jaccard")
+random_wuni <- phyl_random_rel_strain %>% phyloseq::distance("wunifrac")
+random_samples <- phyl_random_rel_strain %>% sample_data() %>% as("data.frame")
+```
+
+```{r}
+vegan::adonis(random_bray ~ Timepoint + Treatment,data = random_samples )
+```
+```{r}
+vegan::adonis(random_wuni ~ Timepoint + Treatment,data = random_samples )
+```
+```{r}
+vegan::adonis(random_jaccard ~ Timepoint + Treatment,data = random_samples )
+```
+```{r}
+tolerant_bray <- phyl_tolerant_rel_strain %>% phyloseq::distance("bray")
+tolerant_jaccard <- phyl_tolerant_rel_strain %>% phyloseq::distance("jaccard")
+tolerant_wuni <- phyl_tolerant_rel_strain %>% phyloseq::distance("wunifrac")
+tolerant_samples <- phyl_tolerant_rel_strain %>% sample_data() %>% as("data.frame")
+```
+
+```{r}
+vegan::adonis(tolerant_bray ~ Timepoint + Treatment,data = tolerant_samples )
+```
+```{r}
+vegan::adonis(tolerant_jaccard ~ Timepoint + Treatment,data = tolerant_samples )
+```
+```{r}
+vegan::adonis(tolerant_wuni ~ Timepoint + Treatment,data = tolerant_samples )
+```
+```{r}
+mixed_bray <- phyl_mixed_rel_strain %>% phyloseq::distance("bray")
+mixed_jaccard <- phyl_mixed_rel_strain %>% phyloseq::distance("jaccard")
+mixed_wuni <- phyl_mixed_rel_strain %>% phyloseq::distance("wunifrac")
+mixed_samples <- phyl_mixed_rel_strain %>% sample_data() %>% as("data.frame")
+```
+
+```{r}
+vegan::adonis(mixed_bray ~ Timepoint + Treatment,data = mixed_samples )
+```
+```{r}
+vegan::adonis(mixed_jaccard ~ Timepoint + Treatment,data = mixed_samples )
+```
+```{r}
+vegan::adonis(mixed_wuni ~ Timepoint + Treatment,data = mixed_samples )
+```
+```{r}
+sensitive_bray <- phyl_sensitive_rel_strain %>% phyloseq::distance("bray")
+sensitive_jaccard <- phyl_sensitive_rel_strain %>% phyloseq::distance("jaccard")
+sensitive_wuni <- phyl_sensitive_rel_strain %>% phyloseq::distance("wunifrac")
+sensitive_samples <- phyl_sensitive_rel_strain %>% sample_data() %>% as("data.frame")
+```
+
+```{r}
+vegan::adonis(sensitive_bray ~ Timepoint + Treatment,data = sensitive_samples )
+```
+```{r}
+vegan::adonis(sensitive_jaccard ~ Timepoint + Treatment,data = sensitive_samples )
+```
+```{r}
+vegan::adonis(sensitive_wuni ~ Timepoint + Treatment,data = sensitive_samples )
+```
+
+### Tab S1 PERMANOVA
+
+```{r}
+bind_rows(list(vegan::adonis(random_jaccard ~ Timepoint * Treatment, data = random_samples ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Random"),
+vegan::adonis(tolerant_jaccard ~ Timepoint * Treatment, data = tolerant_samples ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Tolerant"),
+vegan::adonis(mixed_jaccard ~ Timepoint * Treatment, data = mixed_samples ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Mixed"),
+vegan::adonis(sensitive_jaccard ~ Timepoint * Treatment, data = sensitive_samples ) %>% 
+  .$aov.tab %>% 
+  as.tibble(rownames= "term") %>% 
+  mutate(Syncom = "Sensitive"))) %>%
+  {set_colnames(.,c(colnames(.)[1:6], "p.value", "Syncom"))} %>% 
+  mutate(round(across(where(is.numeric)),4)) %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::tab_header("Table S5. PERMANOVA", subtitle = "999 Permutations") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","R2","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  gt::gtsave("TabS5_permanova.html")
+```
+
+```{r}
+bind_rows(list(
+  vegan::adonis(random_jaccard ~ Timepoint * Treatment, data = random_samples ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Random"),
+vegan::adonis(tolerant_jaccard ~ Timepoint * Treatment, data = tolerant_samples ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Tolerant"),
+vegan::adonis(mixed_jaccard ~ Timepoint * Treatment, data = mixed_samples ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Mixed"),
+vegan::adonis(sensitive_jaccard ~ Timepoint * Treatment, data = sensitive_samples ) %>% 
+  .$aov.tab %>% 
+  as.tibble(rownames= "term") %>% 
+  mutate(Syncom = "Sensitive"))) %>%
+  {set_colnames(.,c(colnames(.)[1:6], "p.value", "Syncom"))} %>% 
+  mutate(round(across(where(is.numeric)),4)) %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+#  gt::tab_header("Table S5. PERMANOVA", subtitle = "999 Permutations") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","R2","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("TabS5_permanova_gt.rds")
+```
+
+### PERMANOVA Subsets
+
+```{r}
+random_jaccard_APO_DMSO <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
+
+random_jaccard_BOA_DMSO <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
+
+tolerant_jaccard_APO_DMSO <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
+
+tolerant_jaccard_BOA_DMSO <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
+
+mixed_jaccard_APO_DMSO <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
+
+mixed_jaccard_BOA_DMSO <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
+
+sensitive_jaccard_APO_DMSO <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  phyloseq::distance("jaccard")
+
+sensitive_jaccard_BOA_DMSO <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+  phyloseq::distance("jaccard")
+```
+
+```{r}
+random_jaccard_APO_DMSO_samp <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+random_jaccard_BOA_DMSO_samp <- phyl_random_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+
+tolerant_jaccard_APO_DMSO_samp <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+tolerant_jaccard_BOA_DMSO_samp <- phyl_tolerant_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+
+mixed_jaccard_APO_DMSO_samp <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+mixed_jaccard_BOA_DMSO_samp <- phyl_mixed_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+
+sensitive_jaccard_APO_DMSO_samp <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "BOA") %>% 
+  sample_data() %>% as("data.frame")
+
+sensitive_jaccard_BOA_DMSO_samp <- phyl_sensitive_rel_strain %>%
+  subset_samples(Treatment != "APO") %>% 
+ sample_data() %>% as("data.frame")
+```
+
+```{r}
+treat_permaov_tab <- bind_rows(list(
+  vegan::adonis(random_jaccard_APO_DMSO ~ Treatment, data = random_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Random",
+         Treatment = "APO")  ,
+vegan::adonis(random_jaccard_BOA_DMSO ~ Treatment, data = random_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Random",
+         Treatment = "BOA"),
+  vegan::adonis(tolerant_jaccard_APO_DMSO ~ Treatment, data = tolerant_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Tolerant",
+         Treatment = "APO")  ,
+vegan::adonis(tolerant_jaccard_BOA_DMSO ~ Treatment, data = tolerant_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Tolerant",
+         Treatment = "BOA"),
+  vegan::adonis(mixed_jaccard_APO_DMSO ~ Treatment, data = mixed_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Mixed",
+         Treatment = "APO")  ,
+vegan::adonis(mixed_jaccard_BOA_DMSO ~ Treatment, data = mixed_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Mixed",
+         Treatment = "BOA"),
+  vegan::adonis(sensitive_jaccard_APO_DMSO ~ Treatment, data = sensitive_jaccard_APO_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Sensitive",
+         Treatment = "APO")  ,
+vegan::adonis(sensitive_jaccard_BOA_DMSO ~ Treatment, data = sensitive_jaccard_BOA_DMSO_samp ) %>% 
+  .$aov.tab %>% 
+  as_tibble(rownames= "term") %>% 
+  mutate(Syncom = "Sensitive",
+         Treatment = "BOA"))) %>%
+  {set_colnames(.,c(colnames(.)[1:6], "p.value", "Syncom", "Treatment"))} %>% 
+  mutate(round(across(where(is.numeric)),4))
+```
+
+### Table
+
+```{r}
+treat_permaov_tab %>% 
+  group_by(Syncom, Treatment) %>% 
+  gt::gt() %>% 
+#  gt::tab_header("Table S5. PERMANOVA", subtitle = "999 Permutations") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","R2","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("files_publication/TabS3_PERMANOVA_per_treatment_gt.rds")
+```
+
+
+# Alpha Diversity 
+
+## Observed
+
+### Plots
+
+```{r}
+observed_random <- phyl_random_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Observed") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
+
+observed_random_plot <- observed_random %>% 
+  ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,15.5)) +
+  ggtitle(paste("Random Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+observed_tolerant <- phyl_tolerant_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Observed") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>%
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
+
+observed_tolerant_plot <- observed_tolerant %>% 
+  ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,15.5)) +
+  ggtitle(paste("Tolerant Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+observed_mixed <- phyl_mixed_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Observed") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
+
+observed_mixed_plot <- observed_mixed %>% 
+  ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,15.5)) +
+  ggtitle(paste("Mixed Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+observed_sensitive <- phyl_sensitive_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Observed") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
+
+observed_sensitive_plot <- observed_sensitive %>% 
+  ggplot(aes(x = Treatment, y = Observed, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,15.5)) +
+  ggtitle(paste("Sensitive Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+#### Fig S1
+
+
+```{r}
+FigS1 <- ((observed_random_plot | observed_tolerant_plot ) / 
+   (observed_mixed_plot |observed_sensitive_plot ) ) +
+  plot_annotation(title = "Figure S1: Number of observed Genera", tag_levels = "A") +
+  plot_layout(guides = "collect") &
+  theme(axis.title.y = element_blank(),
+        legend.position = "bottom",
+        text = element_text(family = "NimbusMon")) 
+```
+
+```{r}
+FigS1
+```
+
+
+### AOV
+
+```{r}
+observed_aov <- bind_rows(list(
+  observed_random %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Random"),
+  observed_tolerant %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Tolerant"),
+  observed_mixed %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Mixed"),
+  observed_sensitive %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Sensitive")))
+```
+
+```{r}
+observed_aov %>% write_rds("rds/observed_aov.rds")
+```
+
+#### Tab S3
+
+
+```{r}
+observed_aov %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::tab_header("Table S3. ANOVA: Observed Diversity") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) 
+```
+```{r}
+observed_aov %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::tab_header("Table S3. ANOVA: Observed Diversity") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  gt::gtsave("TabS1_observed_aov.html")
+```
+```{r}
+observed_aov %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("TabS1_gt.rds")
+```
+
+### Pairwise CLD
+
+```{r}
+observed_all_cld <- bind_rows(list(
+observed_random %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Random"),
+observed_tolerant %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Tolerant"),
+observed_mixed %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Mixed"),
+observed_sensitive %>% 
+  {lm(Observed ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Sensitive"))) %>% 
+  mutate(Group = str_extract(Group, "[a-z]+")) %>% 
+  mutate("95% CI" = paste0("[", 
+                           round(as.numeric(Conf.lower), 3),
+                           " - ",
+                           round(as.numeric(Conf.upper), 3),
+                           "]")) %>% 
+  dplyr::select(Syncom, Timepoint, Treatment, estimate, `95% CI`, Group)
+```
+
+#### Tab S4
+
+```{r}
+observed_all_cld %>% 
+  mutate(estimate = round(estimate, 3)) %>% 
+  group_by(Syncom, Timepoint) %>% 
+  gt::gt()  %>% 
+  gt::tab_header("Table S4. Observed diversity means and pairwise comparisons") %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#cbe0ff"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "a" )) %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#ddc3d0"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "b")) %>%   
+  gt::tab_footnote(
+    footnote = "Different letters indicate significant differences within one Syncom / Timepoint combination (alpha = 0.05), Tukey adjusted",
+    locations = gt::cells_column_labels("Group"))
+```
+```{r}
+observed_all_cld %>% 
+  mutate(estimate = round(estimate, 3)) %>% 
+  group_by(Syncom, Timepoint) %>% 
+  gt::gt()  %>% 
+  gt::tab_header("Table S4. Observed diversity means and pairwise comparisons") %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#cbe0ff"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "a" )) %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#ddc3d0"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "b")) %>%   
+  gt::tab_footnote(
+    footnote = "Different letters indicate significant differences within one Syncom / Timepoint combination (alpha = 0.05), Tukey adjusted",
+    locations = gt::cells_column_labels("Group")) %>% 
+  gt::gtsave("TabS4_observed_pairwise_cld.html")
+```
+
+```{r}
+observed_all_cld %>% 
+  mutate(estimate = round(estimate, 3)) %>% 
+  group_by(Syncom, Timepoint) %>% 
+  gt::gt()  %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#cbe0ff"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "a" )) %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#ddc3d0"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "b")) %>%   
+  gt::tab_footnote(
+    footnote = "Different letters indicate significant differences within one Syncom / Timepoint combination (alpha = 0.05), Tukey adjusted",
+    locations = gt::cells_column_labels("Group")) %>% 
+  write_rds("TabS2_gt.rds")
+```
+
+## Shannon
+
+### Plots
+
+```{r}
+## Random
+
+shannon_random <- phyl_random_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Shannon") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
+
+shannon_random_plot <- shannon_random %>% 
+  ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,1.55)) +
+  ggtitle(paste("Random Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+## Tolerant
+
+shannon_tolerant <- phyl_tolerant_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Shannon") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_")) 
+
+
+shannon_tolerant_plot <- shannon_tolerant %>% 
+  ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,1.55)) +
+  ggtitle(paste("Tolerant Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+## Mixed
+
+shannon_mixed <- phyl_mixed_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Shannon") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
+
+shannon_mixed_plot <- shannon_mixed %>% 
+  ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,1.55)) +
+  ggtitle(paste("Mixed Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+
+## Sensitive
+
+shannon_sensitive <- phyl_sensitive_glom_strain %>% 
+  phyloseq::estimate_richness(measures = "Shannon") %>% 
+  rownames_to_column("sample") %>% 
+  separate(sample,
+           c("Type", "Assembly","Treatment", NA, NA, "Rep", "Timepoint"),
+           sep = "_") %>% 
+  mutate(Treatment = case_when(Treatment == "DMSO" ~ "Control",
+                               TRUE ~ Treatment)) %>% 
+  mutate(Syncom = paste(Type, Assembly, sep = "_"))
+
+shannon_sensitive_plot <- shannon_sensitive %>% 
+  ggplot(aes(x = Treatment, y = Shannon, color = Treatment)) +
+  geom_boxplot() +
+  facet_grid(~Timepoint) +
+  geom_point() +
+  lims(y = c(0,1.55)) +
+  ggtitle(paste("Sensitive Syncom")) +
+  ggthemes::scale_color_few() +
+  theme_bw() +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",face = "bold"),
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+Phyloseq raises a warning regarding lack of singletons. Shannon diversity does rely on low-abundance species, since these communities are in-vitro, singletons are not really expected.
+
+#### Fig S2
+
+```{r}
+FigS2 <- ((shannon_random_plot | shannon_tolerant_plot) /
+  ( shannon_mixed_plot | shannon_sensitive_plot ) ) +
+  plot_annotation(title = "Figure S2: Shannon diversity indeces", tag_levels = "A") +
+  plot_layout(guides = "collect") &
+  theme(axis.title.y = element_blank(),
+        legend.position = "bottom",
+        text = element_text(family = "NimbusMon")) 
+```
+
+```{r}
+FigS2
+```
+
+
+### AOV
+
+```{r}
+bind_rows(list(shannon_random %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Random"),
+  shannon_tolerant %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Tolerant"),
+  shannon_mixed %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Mixed"),
+  shannon_sensitive %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Sensitive"))) %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::tab_header("Table S5. ANOVA: Shannon Diversity") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  )
+```
+```{r}
+bind_rows(list(shannon_random %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Random"),
+  shannon_tolerant %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Tolerant"),
+  shannon_mixed %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Mixed"),
+  shannon_sensitive %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Sensitive"))) %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  #gt::tab_header("Table S3. ANOVA: Shannon Diversity") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("TabS3_gt.rds")
+```
+
+```{r}
+shannon_aov <- bind_rows(list(
+  shannon_random %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Random"),
+  shannon_tolerant %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Tolerant"),
+  shannon_mixed %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Mixed"),
+  shannon_sensitive %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  aov %>% 
+  broom::tidy() %>% 
+  mutate(Syncom = "Sensitive")))
+```
+
+```{r}
+shannon_aov %>% write_rds("rds/shannon_aov.rds")
+```
+
+#### Tab S5
+
+```{r}
+shannon_aov %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::tab_header("Table S5. ANOVA: Shannon Diversity") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) 
+```
+```{r}
+shannon_aov %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::tab_header("Table S5. ANOVA: Shannon Diversity") %>%  
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  gt::gtsave("TabS5_shannon_aov.html")
+```
+```{r}
+shannon_aov %>% 
+  group_by(Syncom) %>% 
+  gt::gt() %>% 
+  gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("term","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("TabS3_gt.rds")
+```
+
+### Pairwise CLD
+
+```{r}
+shannon_all_cld <- bind_rows(list(
+shannon_random %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Random"),
+shannon_tolerant %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Tolerant"),
+shannon_mixed %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Mixed"),
+shannon_sensitive %>% 
+  {lm(Shannon ~ Treatment*Timepoint, data = .)} %>% 
+  emmeans::emmeans( ~ Treatment, by = "Timepoint") %>% 
+  emmeans::CLD(Letters = letters) %>%
+  broom::tidy() %>% 
+  {set_colnames(., c(colnames(.)[1:2],
+                    "estimate",
+                    "SE",
+                    "Conf.lower",
+                    "Conf.upper",
+                    "Group"))} %>% 
+  # Drop SE column since the model SE is not so interesting
+    dplyr::select(-SE) %>% 
+  mutate(Syncom = "Sensitive"))) %>% 
+  mutate(Group = str_extract(Group, "[a-z]+")) %>% 
+  mutate("95% CI" = paste0("[", 
+                           round(as.numeric(Conf.lower), 3),
+                           " - ",
+                           round(as.numeric(Conf.upper), 3),
+                           "]")) %>% 
+  dplyr::select(Syncom, Timepoint, Treatment, estimate, `95% CI`, Group)
+```
+
+
+```{r}
+shannon_all_cld %>% write_rds("rds/shannon_all_cld.rds")
+```
+
+#### Tab S4
+
+```{r}
+shannon_all_cld %>% 
+  mutate(estimate = round(estimate, 3)) %>% 
+  group_by(Syncom, Timepoint) %>% 
+  gt::gt()  %>% 
+  gt::tab_header("Table S4. Shannon diversity means and pairwise comparisons") %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#cbe0ff"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "a" )) %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#ddc3d0"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "b")) %>%   
+  gt::tab_footnote(
+    footnote = "Different letters indicate significant differences within one Syncom / Timepoint combination (alpha = 0.05), Tukey adjusted",
+    locations = gt::cells_column_labels(
+      "Group"))
+```
+```{r}
+shannon_all_cld %>% 
+  mutate(estimate = round(estimate, 3)) %>% 
+  group_by(Syncom, Timepoint) %>% 
+  gt::gt()  %>% 
+  gt::tab_header("Table S4. Shannon diversity means and pairwise comparisons") %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#cbe0ff"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "a" )) %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#ddc3d0"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "b")) %>%   
+  gt::tab_footnote(
+    footnote = "Different letters indicate significant differences within one Syncom / Timepoint combination (alpha = 0.05), Tukey adjusted",
+    locations = gt::cells_column_labels(
+      "Group")) %>% 
+  gt::gtsave("TabS4_shannon_pairwise.html")
+```
+```{r}
+shannon_all_cld %>% 
+  mutate(estimate = round(estimate, 3)) %>% 
+  group_by(Syncom, Timepoint) %>% 
+  gt::gt()  %>% 
+#  gt::tab_header("Table S4. Shannon diversity means and pairwise comparisons") %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#cbe0ff"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "a" )) %>% 
+  gt::tab_style(style = gt::cell_fill(color = "#ddc3d0"),
+      locations = gt::cells_body(
+      columns = c("Group"),
+      rows = Group == "b")) %>%   
+  gt::tab_footnote(
+    footnote = "Different letters indicate significant differences within one Syncom / Timepoint combination (alpha = 0.05), Tukey adjusted",
+    locations = gt::cells_column_labels(
+      "Group")) %>% 
+  write_rds("TabS4_gt.rds")
+```
+
+# AUC vs relative Abundance
+
+```{r}
+strain_AUC <- AUC_emmeans %>%
+  filter(Treat.x %in% c("Control","50uM_APO","100uM_BOA")) %>%
+  mutate(Treatment = case_when(Treat.x == "Control" ~ Treat.x,
+                               Treat.x == "50uM_APO" ~ "APO",
+                               Treat.x == "100uM_BOA" ~ "BOA")) %>% 
+  dplyr::select(Strain, Genus ,Treatment, AUC, estimate) %>%
+  group_by(Strain,Treatment) %>%
+  summarize(mean_AUC = mean(AUC, na.rm = T),
+            mean_rel_AUC = mean(estimate, na.rm = T)) %>%
+  ungroup  
+```
+
+## Plot l2FC community vs AUC ratio
+
+```{r}
+growth_data_l2fc <- left_join(strain_AUC, all_lf2cs_no_time,  by = c("Strain", "Treatment")) %>% 
+  filter(!is.na(Treatment),
+         !is.na(Syncom),
+         !is.na(log2FoldChange),
+         Treatment != "Control") 
+```
+
+```{r}
+relabund_vs_auc <- rbind(
+ phyl_random_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Strain, Treatment, Abundance, Syncom) %>% 
+  group_by(Strain, Treatment, Syncom) %>% 
+  summarize(mean_abundance = mean(Abundance)) %>% 
+   ungroup(),
+ phyl_tolerant_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Strain, Treatment, Abundance, Syncom) %>% 
+  group_by(Strain, Treatment, Syncom) %>% 
+  summarize(mean_abundance = mean(Abundance)) %>% 
+   ungroup(),
+ phyl_sensitive_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Strain, Treatment, Abundance, Syncom) %>% 
+  group_by(Strain, Treatment, Syncom) %>% 
+  summarize(mean_abundance = mean(Abundance)) %>% 
+   ungroup(),
+ phyl_mixed_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Strain, Treatment, Abundance, Syncom) %>% 
+  group_by(Strain, Treatment, Syncom) %>% 
+  summarize(mean_abundance = mean(Abundance)) %>% 
+   ungroup()) %>% 
+  left_join(strain_AUC, by = c("Strain", "Treatment"))
+ 
+```
+```{r}
+lm(mean_abundance ~ mean_AUC:Treatment, data = relabund_vs_auc) %>% summary
+```
+
+
+## Estimate R^2
+
+### BOA
+
+```{r}
+lm(log2FoldChange ~ mean_rel_AUC + Syncom, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "BOA")) %>% 
+  summary()
+```
+
+```{r}
+r2_boa <-  lm(log2FoldChange ~ mean_rel_AUC, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "BOA")) %>% 
+  summary() %>% .$adj.r.squared
+```
+
+No correlation. 
+
+```{r}
+lm(log2FoldChange ~ mean_AUC, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "BOA")) %>% 
+  summary()
+```
+
+```{r}
+r2_boa_absAUC <-  lm(log2FoldChange ~ mean_AUC, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "BOA")) %>% 
+  summary() %>%
+  .$adj.r.squared
+```
+
+### APO
+
+```{r}
+lm(log2FoldChange ~ mean_rel_AUC, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "APO")) %>% 
+  summary()
+r2_apo <-  lm(log2FoldChange ~ mean_rel_AUC, 
+              data = growth_data_l2fc %>% 
+              filter(Treatment == "APO")) %>% 
+  summary() %>%
+  .$adj.r.squared
+```
+
+
+```{r}
+lm(log2FoldChange ~ mean_AUC, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "APO")) %>% 
+  summary()
+r2_apo_absAUC <- lm(log2FoldChange ~ mean_AUC, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "APO")) %>% 
+  summary() %>% .$adj.r.squared
+```
+
+No correlation. 
+
+```{r}
+lm(log2FoldChange ~ mean_rel_AUC + Syncom, 
+   data = growth_data_l2fc %>% 
+     filter(Treatment == "APO")) %>% 
+  summary()
+```
+
+#### Tab S8
+
+```{r}
+r2adj <-tibble(r2 = c(r2_apo, r2_boa, r2_apo_absAUC, r2_boa_absAUC) ,Treatment = c("APO","BOA","APO","BOA"), AUC = c("relative","relative","absolute","absolute"))
+r2adj %>% write_rds("files_publication/rsquare_l2FC_AUC.rds")
+```
+
+```{r}
+r2adj %>% gt::gt()
+```
+
+## Plot AUC vs l2fc
+
+```{r}
+plot_dotplot_auc_vs_l2fc <- growth_data_l2fc %>% 
+  ggplot(aes(x = mean_rel_AUC,
+             y = log2FoldChange)) +
+  geom_vline(aes(xintercept = 1), color = "darkgrey") +
+  geom_hline(aes(yintercept = 0), color = "darkgrey") +
+  geom_smooth(method = "lm", color = "black", se = T) +
+  geom_point(colour = "black", 
+             size = 5, 
+             alpha = 0.7) +
+  geom_point(aes(color = Syncom),
+             size = 5, 
+             alpha = 0.7) +
+  scale_color_manual(values = syncom_colors) +
+  facet_wrap(~Treatment, scales = "free_x") +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(paste("Effect on strain grown in isolation \n [Ratio area under the curve (Treatment / Control)]")) +
+  ylab(paste("Effect on strain grown in community \n [log2Foldchange (Treatment / Control)]")) +
+  ggtitle("Growth and abundance changes by treatment") +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        text = element_text(family = "NimbusMon"),
+        strip.background = element_blank(),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",
+                                  face = "bold"),
+        legend.position = "none") 
+plot_dotplot_auc_vs_l2fc
+```
+```{r}
+plot_dotplot_abs_auc_vs_l2fc <- growth_data_l2fc %>% 
+  ggplot(aes(x = mean_AUC,
+             y = log2FoldChange)) +
+ # geom_vline(aes(xintercept = 1), color = "darkgrey") +
+  geom_hline(aes(yintercept = 0), color = "darkgrey") +
+  geom_smooth(method = "lm", color = "black", se = T) +
+  geom_point(colour = "black", 
+             size = 5, 
+             alpha = 0.7) +
+  geom_point(aes(color = Syncom),
+             size = 5, 
+             alpha = 0.7) +
+  scale_color_manual(values = syncom_colors) +
+  facet_wrap(~Treatment, scales = "free_x") +
+  theme_bw(base_family = "NimbusMon") +
+  xlab(paste("Growth in Treatment")) +
+  ylab(paste("Effect on strain grown in community \n [log2Foldchange (Treatment / Control)]")) +
+  ggtitle("Growth and abundance changes by treatment") +
+  theme(plot.title = element_text(family = "NimbusMon"),
+        plot.subtitle =  element_text(family = "NimbusMon"),
+        text = element_text(family = "NimbusMon"),
+        strip.background = element_blank(),
+        axis.title = element_text(family = "NimbusMon"),
+        strip.text = element_text(family = "NimbusMon",
+                                  face = "bold"),
+        legend.position = "none") 
+plot_dotplot_abs_auc_vs_l2fc
+```
+
+## Strains across communities
+
+```{r}
+all_lf2cs_no_time %>% 
+  left_join(strain_AUC, by = c("Strain", "Treatment")) %>% 
+  mutate(genus_strain = str_c(Genus,Strain, sep = "\n")) %>% 
+  group_by(Strain) %>% 
+  add_count(Treatment) %>% 
+  filter(n > 1) %>% 
+  ggplot(aes( x = mean_rel_AUC,y=log2FoldChange, shape = Treatment)) +
+  facet_wrap(~genus_strain, scales = "free_y") +
+  geom_point(size = 4) +
+  geom_point(aes(color = Syncom), size = 3) +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white")) +
+  scale_color_manual(values = syncom_colors) +
+  labs(title = "Changes in abundance",
+       sub = "Strains included in more than one community",
+       y = "log2FC in Community\n(across all timepoints)",
+       x = expression("AUC(Treatment) / AUC(Control)"))
+  #ggthemes::scale_color_few()
+```
+
+```{r}
+all_lf2cs_no_time %>% 
+  left_join(strain_AUC, by = c("Strain", "Treatment")) %>% 
+  mutate(genus_strain = str_c(Genus,Strain, sep = "\n")) %>% 
+  group_by(Strain) %>% 
+  add_count(Treatment) %>% 
+  filter(n > 1) %>% 
+  ggplot(aes( x = Treatment,y=log2FoldChange)) +
+  facet_wrap(~genus_strain, scales = "free_y") +
+  geom_point(size = 4) +
+  geom_point(aes(color = Syncom), size = 3) +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white")) +
+  scale_color_manual(values = syncom_colors) +
+  labs(title = "Changes in abundance",
+       sub = "Strains included in more than one community",
+       y = "log2FC in Community\n(across all timepoints)",
+       x = "Treatment")
+  #ggthemes::scale_color_few()
+```
+
+```{r}
+all_lf2cs_no_time %>% 
+  left_join(strain_AUC, by = c("Strain", "Treatment")) %>% 
+  mutate(genus_strain = str_c(Genus,Strain, sep = "\n")) %>% 
+  group_by(Strain) %>% 
+  add_count(Treatment) %>% 
+  filter(n > 1) %>% 
+  ggplot(aes( y=log2FoldChange, x = Treatment, group = Syncom)) +
+  facet_wrap(~genus_strain, ncol = 5, scales = "free_x") +
+  geom_hline(aes(yintercept = 0),
+             linetype = "dashed",
+             color = "darkgrey" ) +
+  geom_errorbar(aes(ymin = log2FoldChange-lfcSE, 
+                      ymax = log2FoldChange + lfcSE),
+                 position = position_dodge(width = 0.6),
+                 width = 0.2) +
+  geom_point(size = 4,
+             position = position_dodge(width = 0.6)) +
+  geom_point(aes(color = Syncom),
+             size = 3,
+             position = position_dodge(width = 0.6)) +
+  geom_vline(aes(xintercept = 1.5)) +
+  scale_x_discrete(limits = rev) + 
+  coord_flip() +
+  theme_bw() +
+  theme(text = element_text(family = "Arial"),
+        strip.background = element_rect(fill = "white"),
+        legend.position = "none") +
+  scale_color_manual(values = syncom_colors) +
+  labs(title = "Changes in abundance",
+       sub = "Strains included in more than one community",
+       y = "log2FC vs Control (across all timepoints)",
+       x = "Treatment")
+  #ggthemes::scale_color_few()
+```
+
+#### Per timepoint
+
+```{r}
+plot_l2fc_per_community <-all_lf2cs_per_time %>% 
+  left_join(strain_AUC, by = c("Strain", "Treatment")) %>% 
+  mutate(genus_strain = str_c(Genus,Strain, sep = "\n")) %>% 
+  group_by(Strain, Timepoint) %>% 
+  add_count(Treatment) %>% 
+  filter(n > 1) %>% 
+  ggplot(aes( y=log2FoldChange, x = interaction(Timepoint, Treatment), group = Syncom)) +
+  facet_wrap(~genus_strain, ncol = 3) +
+  geom_hline(aes(yintercept = 0),
+             linetype = "dashed",
+             color = "darkgrey" ) +
+  geom_errorbar(aes(ymin = log2FoldChange-lfcSE, 
+                      ymax = log2FoldChange + lfcSE),
+                 position = position_dodge(width = 0.6),
+                 width = 0.2) +
+  geom_point(size = 4,
+             position = position_dodge(width = 0.6)) +
+  geom_point(aes(color = Syncom),
+             size = 3,
+             position = position_dodge(width = 0.6)) +
+  geom_vline(aes(xintercept = 4.5)) +
+  scale_x_discrete(limits = rev) + 
+  coord_flip() +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white")) +
+  scale_color_manual(values = syncom_colors) +
+  labs(title = "Changes in abundance",
+       sub = "Strains included in more than one community",
+       y = "log2FC in Community (across all timepoints)",
+       x = "Treatment")
+  #ggthemes::scale_color_few()
+plot_l2fc_per_community
+```
+
+### Figure
+
+```{r}
+plot_dotplot_auc_vs_l2fc / plot_l2fc_per_community +
+  plot_layout(heights = c(3,5),
+              guides = "collect") &
+  theme(legend.position = "bottom")
+  
+```
+
+
+
+# Relative abundance changes
+
+## Calculate l2FC
+
+### Random
+
+```{r}
+## APO /BOA
+APO_BOA_random <- bind_rows(
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>%   mutate(Timepoint = "24h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## APO / Control
+
+APO_DMSO_random <- bind_rows(
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## BOA / Control
+
+BOA_DMSO_random <- bind_rows(
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_random_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+```
+
+
+### Tolerant
+
+```{r}
+## APO /BOA
+
+APO_BOA_tolerant <- bind_rows(
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## APO / Control
+
+APO_DMSO_tolerant <- bind_rows(
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## BOA / Control
+
+BOA_DMSO_tolerant <- bind_rows(
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_tolerant_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+```
+
+
+### Mixed
+
+```{r}
+## APO /BOA
+
+APO_BOA_mixed <- bind_rows(
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## APO / Control
+
+APO_DMSO_mixed <- bind_rows(
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## BOA / Control
+
+BOA_DMSO_mixed <- bind_rows(
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_mixed_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+```
+
+
+### Sensitive
+
+```{r}
+## APO /BOA
+
+APO_BOA_sensitive <- bind_rows(
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "BOA", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## APO / Control
+
+APO_DMSO_sensitive <- bind_rows(
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "APO", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+
+## BOA / Control
+
+BOA_DMSO_sensitive <- bind_rows(
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "24h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "24h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "48h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "48h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "72h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "72h"),
+phyl_sensitive_glom_strain %>%
+  subset_samples(Timepoint == "96h") %>% 
+  compare_conditions(treatvar = "Treatment", treat1= "BOA", treat2 = "Control", plot = FALSE) %>% 
+  mutate(Timepoint = "96h"))
+```
+
+## Fig S3
+
+```{r}
+colors_l2fc <- wesanderson::wes_palette("Moonrise2", 3, "discrete")
+```
+
+
+```{r}
+plot_sens_allcomparisons <- (bind_rows(
+  list(APO_DMSO_sensitive %>% mutate(Comparison = "APO / Control"),
+       APO_BOA_sensitive %>% mutate(Comparison = "APO / BOA"),
+       BOA_DMSO_sensitive %>% mutate(Comparison = "BOA / Control"))) %>% 
+  ggplot(aes( x = log2FoldChange, y = fct_rev(Genus), color = Comparison)) +
+  geom_point(position = position_dodge(0.5)) +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), position = "dodge",width = 0.2) +
+  geom_point() +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), width = 0.2) +
+  geom_vline(aes(xintercept = 0), lty = 3) +
+  ylab(element_blank()) +
+  facet_wrap(~Timepoint) +
+ #ggtitle("Sensitive: log2FC") +
+  scale_y_discrete(label=abbreviate) +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon")) +
+  scale_color_manual(values = colors_l2fc) +
+  labs(x = "log2FoldChange (sensitive)") ) /
+  (phyl_sensitive_rel_strain %>% 
+  psmelt() %>%
+  filter(Genus %in% c(APO_DMSO_sensitive$Genus,APO_BOA_sensitive$Genus, BOA_DMSO_sensitive$Genus)) %>%
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  #ggtitle(paste("Sensitive: Relative Genus abundances")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~Genus_Strain, scales = "free_y"))
+```
+
+```{r}
+plot_mix_allcomparisons <- (bind_rows(
+  list(APO_DMSO_mixed %>% mutate(Comparison = "APO / Control"),
+       APO_BOA_mixed %>% mutate(Comparison = "APO / BOA"),
+       BOA_DMSO_mixed %>% mutate(Comparison = "BOA / Control"))) %>% 
+  ggplot(aes( x = log2FoldChange, y = fct_rev(Genus), color = Comparison)) +
+  geom_point(position = position_dodge(0.5)) +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), position = "dodge",width = 0.2) +
+  geom_point() +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), width = 0.2) +
+  geom_vline(aes(xintercept = 0), lty = 3) +
+  ylab(element_blank()) +
+  facet_wrap(~Timepoint) +
+  #ggtitle("Mixed: log2FC") +
+  scale_y_discrete(label=abbreviate) +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon")) +
+  scale_color_manual(values = colors_l2fc) +
+  labs(x = "log2FoldChange (mixed)") ) /
+  (phyl_mixed_rel_strain %>% 
+  psmelt() %>%
+  filter(Genus %in% c(APO_DMSO_mixed$Genus,APO_BOA_mixed$Genus, BOA_DMSO_mixed$Genus)) %>%
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() +
+  scale_y_continuous(n.breaks = 4) +
+  #ggtitle(paste("Mixed: Relative Genus abundances")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~Genus_Strain, scales = "free_y"))
+```
+
+```{r}
+plot_tol_allcomparisons <- (bind_rows(
+  list(APO_DMSO_tolerant %>% mutate(Comparison = "APO / Control"),
+       APO_BOA_tolerant %>% mutate(Comparison = "APO / BOA"),
+       BOA_DMSO_tolerant %>% mutate(Comparison = "BOA / Control"))) %>% 
+  filter(Genus != "Nocardioides") %>%
+  ggplot(aes( x = log2FoldChange, y = fct_rev(Genus), color = Comparison)) +
+  geom_point(position = position_dodge(0.5)) +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), position = "dodge",width = 0.2) +
+  geom_point() +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), width = 0.2) +
+  geom_vline(aes(xintercept = 0), lty = 3) +
+  ylab(element_blank()) +
+  facet_wrap(~Timepoint) +
+  #ggtitle("Tolerant: log2FC") +
+  scale_y_discrete(label=abbreviate) +   
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon")) +
+  scale_color_manual(values = colors_l2fc) +
+  labs(x = "log2FoldChange (tolerant)") ) /
+  (phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  filter(Genus %in% c(APO_DMSO_tolerant$Genus, APO_BOA_tolerant$Genus, BOA_DMSO_tolerant$Genus),
+         Genus != "Nocardioides") %>%
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  #ggtitle(paste("Tolerant: Relative Genus abundances")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~Genus_Strain, scales = "free_y",nrow = 2))
+```
+
+
+```{r}
+plot_rand_allcomparisons <- (bind_rows(
+  list(APO_DMSO_random %>% mutate(Comparison = "APO / Control"),
+       APO_BOA_random %>% mutate(Comparison = "APO / BOA"),
+       BOA_DMSO_random %>% mutate(Comparison = "BOA / Control"))) %>% 
+  ggplot(aes( x = log2FoldChange, y = fct_rev(Genus), color = Comparison)) +
+  geom_point(position = position_dodge(0.5)) +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), position = "dodge",width = 0.2) +
+  geom_point() +
+  geom_errorbar(aes(xmin = log2FoldChange - lfcSE, xmax = log2FoldChange + lfcSE), width = 0.2) +
+  geom_vline(aes(xintercept = 0), lty = 3) +
+  ylab(element_blank()) +
+  facet_wrap(~Timepoint) +
+  #ggtitle("Random: log2FC") +
+  scale_y_discrete(label=abbreviate) +
+  theme_bw() +
+  theme(text = element_text(family = "NimbusMon")) +
+  scale_color_manual(values = colors_l2fc) +
+  labs(x = "log2FoldChange (random)") ) /
+  (phyl_random_rel_strain %>% 
+  psmelt() %>%
+  filter(Genus %in% c(APO_DMSO_random$Genus, APO_BOA_random$Genus, BOA_DMSO_random$Genus)) %>%
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  #ggtitle(paste("Random: Relative Genus abundances")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~Genus_Strain, scales = "free_y",nrow = 2))
+```
+
+### Fig 3 - Plot
+
+```{r}
+((plot_rand_allcomparisons | plot_tol_allcomparisons) / (plot_mix_allcomparisons | plot_sens_allcomparisons)) +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(guides = 'collect' ) &
+  theme(text = element_text(family ="NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        strip.text = element_text(size = 8),
+        legend.position = "bottom") 
+```
+
+# Overlap Random and Tolerant
+
+```{r}
+tol_strains <- phyl_tolerant_rel_strain %>% 
+  psmelt() %>% .$Strain
+rand_strains <- phyl_random_rel_strain %>% 
+  psmelt() %>% .$Strain
+rand_tol_genusstrain <- rbind(phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  dplyr::select(Strain, Genus_Strain),
+  phyl_random_rel_strain %>% 
+  psmelt() %>%
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  dplyr::select(Strain, Genus_Strain)) %>% 
+  distinct()
+```
+
+```{r}
+relabund_random_overlap_tol <- phyl_random_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_tolerant_rel_strain %>% 
+  psmelt() %>% .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  ggtitle(paste("Random: Strains overlapping with Tolerant")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~Genus_Strain, scales = "free_y")
+relabund_tolerant_overlap_rand <- phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_random_rel_strain %>% 
+  psmelt() %>% .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n")) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  ggtitle(paste("Tolerant: Strains overlapping with Random")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~Genus_Strain, scales = "free_y")
+```
+
+```{r}
+rand_tol_relabund_overlap_plot <-
+  phyl_random_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_tolerant_rel_strain %>% 
+  psmelt() %>% .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
+         Syncom = "Random") %>% 
+  rbind(phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_random_rel_strain %>% 
+  psmelt() %>% .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
+         Syncom = "Tolerant") ) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  ggtitle(paste("Relative abundance of overlapping isolates")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(~paste(Syncom, Genus_Strain, sep = "\n"),
+             scales = "free_y",
+             ncol = 5,
+             strip.position = "top") +
+  theme(legend.position = "bottom",
+        text = element_text(family = "NimbusMon"), 
+        strip.background = element_rect(fill = "white"),
+        strip.text.y = element_blank())
+```
+
+```{r}
+relabund_random_overlap_tol /
+  relabund_tolerant_overlap_rand +
+  plot_layout(guides = "collect") &
+    theme(text = element_text(family ="NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        legend.position = "bottom")
+```
+
+## Fig 4
+
+### Recovered isolates
+
+```{r}
+tolerant_strains_genus <- phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(Syncom = "Tolerant") %>% 
+  distinct()
+random_strains_genus <- phyl_random_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Genus, Strain) %>%
+  mutate(Syncom = "Random") %>% 
+  distinct()
+sensitive_strains_genus <- phyl_sensitive_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(Syncom = "Sensitive") %>% 
+  distinct()
+mixed_strains_genus <- phyl_mixed_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Genus, Strain) %>%
+  mutate(Syncom = "Mixed") %>% 
+  distinct()
+```
+
+```{r}
+rbind(tolerant_strains_genus, random_strains_genus, sensitive_strains_genus, mixed_strains_genus) %>% 
+  write_csv("Found_isolates.csv")
+```
+
+### Plot of overlapping strains
+
+```{r}
+rand_tol_relabund_overlap_plot <-
+  phyl_random_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_tolerant_rel_strain %>% 
+  psmelt() %>% .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
+         Syncom = "Random") %>% 
+  rbind(phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_random_rel_strain %>% 
+  psmelt() %>% .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
+         Syncom = "Tolerant") ) %>% 
+  ggplot(aes(y = Abundance, x = Timepoint, color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  stat_summary(aes(group = Treatment), fun = "mean", geom = "line") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 4) +
+  ggtitle(paste("Relative abundance of overlapping isolates")) +
+  ggthemes::scale_color_few() +
+  facet_wrap(paste(Syncom, Genus_Strain, sep = "\n")~.,
+             scales = "free_y",
+             ncol = 5,
+             strip.position = "top") +
+  theme(legend.position = "bottom",
+        text = element_text(family = "NimbusMon"), 
+        strip.background = element_rect(fill = "white"),
+        strip.text.y = element_blank())
+```
+
+```{r}
+abundances_tol_rand <- bind_rows(list(phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Strain, Treatment, Timepoint, Abundance) %>% 
+  mutate(Syncom = "Tolerant"),
+  phyl_random_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Strain, Treatment, Timepoint, Abundance) %>% 
+  mutate(Syncom = "Random")))
+```
+
+
+
+
+## Correlations
+
+```{r}
+corr_meth <- "pearson"
+adjust <- "none"
+
+tol_apo_boa_24_96 <- bind_rows(
+  list(
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 99, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Syncom = "Tolerant",
+           Timepoint = "96h"),
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,                 
+                 99, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Syncom = "Tolerant",
+           Timepoint = "24h"),
+phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 99, 
+                 p.adj = adjust,
+                 method = corr_meth,
+                 OTUcol = "Genus") %>% 
+  mutate(Treatment = "BOA",
+         Timepoint = "96h",
+          Syncom = "Tolerant"),
+phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 p.adj = adjust,
+                 99, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>% 
+  mutate(Treatment = "BOA",
+         Timepoint = "24h",
+          Syncom = "Tolerant")))
+
+rand_apo_boa_24_96 <- bind_rows(list(phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 99,
+                 method = corr_meth,
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Timepoint = "96h",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 99,
+                 method = corr_meth,
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Timepoint = "24h",
+           Syncom = "Random") ,
+phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 p.adj = adjust,
+                 99, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>% 
+  mutate(Treatment = "BOA",
+         Timepoint = "96h",
+           Syncom = "Random"),
+phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 p.adj = adjust,
+                 99, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>% 
+  mutate(Treatment = "BOA",
+         Timepoint = "24h",
+           Syncom = "Random")
+)) 
+
+tol_rand_apo_boa_24_96_corrs_p <- rbind(tol_apo_boa_24_96, rand_apo_boa_24_96) %>% 
+  filter(p < 0.05)
+tol_rand_apo_boa_24_96_corrs_r <- rbind(tol_apo_boa_24_96, rand_apo_boa_24_96) %>% 
+  filter(abs(r) > 0.5)
+```
+
+```{r}
+# Set seed for reproducibility of layout
+set.seed(21356)
+corrnetwork_plot <- tol_rand_apo_boa_24_96_corrs_r  %>% 
+  graph_from_data_frame() %>% 
+  { permute(., sample(vcount(.))) } %>% 
+  ggnetwork::ggnetwork(layout = igraph::in_circle(),
+                        arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement() %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  left_join(abundances_tol_rand, by = c("Syncom","Strain","Treatment","Timepoint")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = rho), curvature = 0.2) +
+  geom_nodes(aes(size = Abundance)) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
+  ggtitle("Correlation network") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~paste(Treatment, Timepoint, sep = ": "), scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  lims(x = c(-0.2,1.2),
+      y = c(-0.2,1.2)) +
+  NULL
+```
+
+## Figure
+
+```{r}
+rand_tol_relabund_overlap_plot /
+  corrnetwork_plot +
+  theme(legend.position = "bottom") +
+  plot_layout(heights = c(1,3)) +
+  plot_annotation(tag_levels = "A") &
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"))
+```
+
+## Some network descriptive stats
+
+```{r}
+edge_count <- tol_rand_apo_boa_24_96_corrs_r  %>% 
+  graph_from_data_frame() %>% 
+  { permute(., sample(vcount(.))) }%>% 
+  ggnetwork::ggnetwork(layout = igraph::in_circle(),
+                       arrow.gap = F) %>% 
+  distinct() %>%
+  fix_node_placement() %>% filter(!is.na(r)) %>%
+  {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
+  map_dfr(~nrow(.x)) %>% t() %>% as_tibble(rownames = "Condition") %>% 
+  set_colnames(c("Condition", "edges"))
+```
+```{r}
+node_count <- tol_rand_apo_boa_24_96_corrs_r  %>% 
+  graph_from_data_frame() %>% 
+  { permute(., sample(vcount(.))) }%>% 
+  ggnetwork::ggnetwork(layout = igraph::in_circle(),
+                       arrow.gap = F) %>% 
+  distinct() %>%
+  fix_node_placement() %>%
+  filter(is.na(r)) %>%
+  {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
+  map_dfr(~nrow(.x)) %>% t() %>% as_tibble(rownames = "Condition") %>% 
+  set_colnames(c("Condition", "nodes"))
+```
+
+```{r}
+left_join(node_count, edge_count) %>% 
+  mutate(Edges_per_node = edges/nodes)
+```
+
+```{r}
+tol_rand_apo_boa_24_96_corrs_r  %>%
+  {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
+  map_dfr(~ graph_from_data_frame(.x) %>% betweenness(), .id = "Condition")  %>% 
+  pivot_longer(2:14, names_to = "Genus", values_to = "Betweenness") %>% 
+  group_by(Condition) %>% 
+  mutate(rel_betw = Betweenness / sum(Betweenness, na.rm = T)) %>% 
+  ungroup() %>% 
+  separate("Condition", c("Timepoint", "Syncom","Treatment"), sep ="\\.") %>% 
+  ggplot(aes(x=Syncom, y = Betweenness, fill = Timepoint)) +
+  geom_col(position = "dodge2") +
+  facet_wrap(Genus~Treatment)
+```
+```{r}
+tol_rand_apo_boa_24_96_corrs_r  %>%
+  {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
+  map_dfr(~ graph_from_data_frame(.x) %>% degree(), .id = "Condition") %>% 
+  pivot_longer(2:14, names_to = "Genus", values_to = "Degree") %>% 
+  group_by(Condition) %>% 
+  mutate(rel_degree = Degree / sum(Degree, na.rm = T)) %>% 
+  ungroup() %>% 
+  separate("Condition", c("Timepoint", "Syncom","Treatment"), sep ="\\.") %>% 
+  ggplot(aes(x=Syncom, y = Degree, fill = Timepoint)) +
+  geom_col(position = "dodge2") +
+  facet_wrap(Genus~Treatment)
+```
+
+
+#### Add DMSO to this
+
+```{r}
+tol_rand_all_24_96_corrs_p <- tol_rand_apo_boa_24_96_corrs_p %>% 
+  bind_rows(list(phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "Control",
+           Timepoint = "96h",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus")%>%
+    mutate(Treatment = "Control",
+           Timepoint = "24h",
+           Syncom = "Random"),
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "Control",
+           Timepoint = "96h",
+           Syncom = "Tolerant") ,
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "Control",
+           Timepoint = "24h",
+           Syncom = "Tolerant")))
+```
+
+```{r}
+tol_rand_all_24_96_corrs_p %>% 
+  filter(abs(r) > 0.5) %>% 
+  graph_from_data_frame() %>% 
+  ggnetwork::ggnetwork(layout = igraph::with_fr(),
+                       arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement(Treatments = list("Control","BOA","APO")) %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = r), curvature = 0.2) +
+  geom_nodes() +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
+  ggtitle("Tolerant and Random",
+          sub = "pearson > 0.5") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~interaction(Treatment, Timepoint), scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+```
+
+```{r}
+edge_count <- tol_rand_all_24_96_corrs_p  %>% 
+  graph_from_data_frame() %>% 
+  { permute(., sample(vcount(.))) }%>% 
+  ggnetwork::ggnetwork(layout = igraph::in_circle(),
+                       arrow.gap = F) %>% 
+  distinct() %>%
+  fix_node_placement() %>%
+  filter(!is.na(r)) %>%
+  {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
+  map_dfr(~nrow(.x)) %>% t() %>% as_tibble(rownames = "Condition") %>% 
+  set_colnames(c("Condition", "edges"))
+```
+```{r}
+node_count <- tol_rand_all_24_96_corrs_p  %>% 
+  graph_from_data_frame() %>% 
+  { permute(., sample(vcount(.))) }%>% 
+  ggnetwork::ggnetwork(layout = igraph::in_circle(),
+                       arrow.gap = F) %>% 
+  distinct() %>%
+  fix_node_placement(Treatments = list("APO","BOA","Control")) %>%
+  filter(is.na(r)) %>%
+  {split(.,interaction(.$Timepoint, .$Syncom, .$Treatment))} %>% 
+  map_dfr(~nrow(.x)) %>% t() %>% as_tibble(rownames = "Condition") %>% 
+  set_colnames(c("Condition", "nodes"))
+```
+
+```{r}
+left_join(node_count, edge_count) %>% 
+  mutate(Edges_per_node = edges/nodes) %>% 
+  separate("Condition", c("Timepoint","Syncom","Treatment"), sep = "\\.") %>% 
+  arrange(Timepoint,Syncom,desc(Treatment)) %>% 
+  group_by(Timepoint, Syncom) %>% 
+  gt::gt()
+```
+
+
+### Across all timepoints
+
+```{r}
+corr_meth <- "spearman"
+adjust <- "fdr"
+
+tol_apo_boa <- bind_rows(list(
+  phyl_tolerant_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 mincounts = 10, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Syncom = "Tolerant"),
+phyl_tolerant_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 p.adj = adjust,
+                 mincounts = 10, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>% 
+  mutate(Treatment = "BOA",
+          Syncom = "Tolerant")))
+
+rand_apo_boa <- bind_rows(list(
+  phyl_random_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 mincounts = 10, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 p.adj = adjust,
+                 mincounts = 10, 
+                 method = corr_meth,
+                 OTUcol = "Genus") %>% 
+  mutate(Treatment = "BOA",
+         Syncom = "Random"))) 
+
+tol_rand_apo_boa <- rbind(tol_apo_boa, rand_apo_boa)
+tol_rand_apo_boa_p <- tol_rand_apo_boa %>% 
+  filter(p < 0.1)
+```
+
+```{r}
+set.seed(1412)
+tol_rand_apo_boa_p %>% 
+  igraph::graph_from_data_frame() %>% 
+  ggnetwork::ggnetwork(layout = igraph::with_fr(),
+                       arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement_no_time(Treatments = list("BOA","APO")) %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = rho), curvature = 0.2) +
+  geom_nodes() +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
+  ggtitle("Tolerant and Random",
+          sub = "FDR adjusted p < 0.1") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~Treatment#, scales = "free"
+             ) +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+```
+```{r}
+tol_rand_apo_boa %>% 
+  filter(p < 0.05) %>% 
+  filter(Treatment == "APO") %>% 
+  igraph::graph_from_data_frame() %>% 
+  ggnetwork::ggnetwork(layout = igraph::with_fr(),
+                       arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement_no_time(Treatments = list("APO")) %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = r), curvature = 0.2) +
+  geom_nodes() +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
+  ggtitle("Tolerant and Random",
+          sub = "FDR adjusted p < 0.05") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~Treatment, scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "Arial"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+```
+```{r}
+tol_rand_apo_boa %>% 
+  filter(p < 0.1) %>% 
+  filter(Treatment == "APO") %>% 
+  igraph::graph_from_data_frame() %>% 
+  ggnetwork::ggnetwork(layout = igraph::nicely(),
+                       arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement_no_time(Treatments = list("APO")) %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = r), curvature = 0.2) +
+  geom_nodes() +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 2) +
+  ggtitle("Tolerant and Random",
+          sub = "FDR adjusted p < 0.05") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~Treatment, scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "Arial"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+```
+
+## Abundances Random vs tolerant
+
+```{r}
+abundances_tol_rand <- bind_rows(list(phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain, Treatment, Timepoint, Abundance) %>% 
+  mutate(Syncom = "Tolerant"),
+  phyl_random_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain, Treatment, Timepoint, Abundance) %>% 
+  mutate(Syncom = "Random")))
+abundances_tol_rand_summarized <- abundances_tol_rand %>% 
+  group_by(Syncom, Genus, Strain, Treatment) %>% 
+  summarize(mean = mean(Abundance, na.rm = T),
+            sd = sd(Abundance, na.rm = T)) %>%
+  ungroup
+```
+
+```{r}
+abundances_tol_rand_summarized %>% filter(mean > 0.01) %>% 
+  ggplot() +
+  geom_jitter(aes(y = mean, x = Syncom, color = Genus)) +
+  facet_wrap(~Treatment) +
+  theme_bw()
+```
+### Tables
+
+```{r}
+  left_join(abundances_tol_rand_summarized %>%
+  filter(Syncom == "Random", Treatment %in% c("BOA","Control")) %>%
+  dplyr::select(Genus, mean) %>% 
+  group_by(Genus) %>% 
+  summarize(Random = mean(mean)*100) %>%
+  dplyr::select(Genus, Random),
+  abundances_tol_rand_summarized %>%
+  filter(Syncom == "Tolerant", Treatment %in% c("BOA","Control")) %>%
+  dplyr::select(Genus, mean) %>% 
+  group_by(Genus) %>% 
+  summarize(Tolerant = mean(mean)*100) %>%
+  dplyr::select(Genus, Tolerant)) %>% 
+    mutate(Tolerant = case_when(is.na(Tolerant) ~ 0,
+                              TRUE ~ Tolerant),
+           Random = case_when(is.na(Random) ~ 0,
+                              TRUE~Random))  %>% 
+  mutate(Diff_CTRL = round((Random - Tolerant),2)) %>% 
+  arrange(desc(abs(Diff_CTRL)))
+```
+
+```{r}
+  left_join(abundances_tol_rand_summarized %>%
+  filter(Syncom == "Random", Treatment == "APO") %>%
+  mutate(Random = mean*100) %>%
+  dplyr::select(Treatment, Genus, Random),
+  abundances_tol_rand_summarized %>%
+  filter(Syncom == "Tolerant", Treatment == "APO") %>%
+  mutate(Tolerant = mean*100) %>%
+  dplyr::select(Treatment, Genus, Tolerant)) %>% 
+    mutate(Tolerant = case_when(is.na(Tolerant) ~ 0,
+                              TRUE ~ Tolerant),
+           Random = case_when(is.na(Random) ~ 0,
+                              TRUE~Random))  %>% 
+  mutate(Diff_APO = (Random - Tolerant)*100) %>% 
+  arrange(desc(abs(Diff_APO)))
+```
+
+## Figure 4A
+
+```{r}
+genus_abundance_plot_random_tolerant <- abundances_tol_rand %>% 
+  mutate(Strain_Identity = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Same strain",
+                               Strain %in% tol_strains ~ "Different strains",
+                               Strain %in% rand_strains ~ "Different strains",
+                               TRUE ~"Neither")) %>%
+  filter(Genus %in% (abundances_tol_rand_summarized %>%
+                       filter(mean >= 0.01) %$%
+                       Genus),
+         !Genus %in% c("Rhizobium", "Hoeflea", "Flavobacterium")
+         ) %>% 
+  ggplot(aes(y = Abundance,
+             x = Syncom, 
+             color = fct_relevel(Treatment,"Control","BOA","APO"),
+             group = fct_relevel(Treatment,"Control","BOA","APO"),
+             shape = fct_relevel(Strain_Identity, "Same strain") )) +
+  stat_summary(geom = "point", fun = "mean", position = position_dodge(width = 0.2), size = 4) +
+  stat_summary(geom = "errorbar", 
+               fun.data = "mean_cl_boot",
+               width = 0.2,
+               position = position_dodge(width = 0.2),
+               color = "black") +
+  facet_grid(~Genus) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial"), 
+        strip.background = element_rect(fill = "white"),
+        #strip.text.y = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        axis.title.x = element_blank()) +
+  scale_shape_discrete(name = "Strain Identity") +
+  scale_color_manual(name =" Treatment",values = rev(ggthemes::few_pal(palette = "Medium")(3)))
+genus_abundance_plot_random_tolerant
+```
+
+```{r}
+genus_log_abundance_plot_random_tolerant <- abundances_tol_rand %>% 
+  mutate(Strain_Identity = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Same strain",
+                               Strain %in% tol_strains ~ "Different strains",
+                               Strain %in% rand_strains ~ "Different strains",
+                               TRUE ~"Neither")) %>%
+  mutate(Abundance = Abundance + 1e-5) %>% #make log compatible
+  ggplot(aes(y = log10(Abundance), x = Genus, color = Syncom, shape = fct_relevel(Strain_Identity, "Same strain") )) +
+  stat_summary(geom = "point", fun = "mean", position = position_dodge(width = 0.2), size = 2) +
+  stat_summary(aes(group = Syncom),
+               geom = "errorbar", 
+               fun.data = "mean_cl_boot",
+               color = "black",
+               width = 0.2,
+               position = position_dodge(width = 0.2)) +
+  facet_grid(Treatment ~.) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial"), 
+        strip.background = element_rect(fill = "white"),
+        #strip.text.y = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        axis.title.x = element_blank()) +
+  scale_shape_discrete(name = "Strain Identity") +
+  scale_color_manual(values = syncom_colors) 
+```
+
+```{r}
+genus_log_abundance_plot_random_tolerant
+```
+
+```{r}
+genus_low_abundance_plot_random_tolerant
+```
+
+```{r}
+abundances_tol_rand_summarized %>% 
+  filter(mean > 0.01) %>% 
+  ggplot(aes(y = mean, x = Syncom, fill = Genus)) +
+  geom_col() +
+  facet_grid(Treatment ~.) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial"), 
+        strip.background = element_rect(fill = "white"),
+        #strip.text.y = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        axis.title.x = element_blank()) 
+```
+
+
+```{r}
+genus_abundance_plot_random_tolerant_full <- abundances_tol_rand %>% 
+  mutate(Strain_Identity = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Same strain",
+                               Strain %in% tol_strains ~ "Different strains",
+                               Strain %in% rand_strains ~ "Different strains",
+                               TRUE ~"Neither")) %>%
+  filter(Genus %in% (abundances_tol_rand_summarized %>%
+                       filter(mean > 0.01) %$%
+                       Genus)) %>% 
+  ggplot(aes(y = Abundance, x = Genus, color = Syncom, shape = fct_relevel(Strain_Identity, "Same strain") )) +
+  stat_summary(geom = "errorbar", 
+               fun.data = "mean_cl_boot",
+               width = 0.2,
+               position = position_dodge(width = 0.2)) +
+  stat_summary(geom = "point", fun = "mean", position = position_dodge(width = 0.2), size = 2) +
+  facet_grid(Treatment ~.) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial"), 
+        strip.background = element_rect(fill = "white"),
+        #strip.text.y = element_blank(),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        axis.title.x = element_blank()) +
+  scale_shape_discrete(name = "Strain Identity") +
+  scale_color_manual(values = syncom_colors) 
+```
+
+```{r}
+genus_abundance_plot_random_tolerant_full
+```
+
+#### Partial
+
+```{r}
+corr_meth <- "pearson"
+adjust <- "fdr"
+
+tol_apo_others_partial <- bind_rows(list(
+  phyl_tolerant_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 mincounts = 100, 
+                 method = corr_meth,
+                 OTUcol = "Genus",
+                 partial = TRUE) %>%
+    mutate(Treatment = "APO",
+           Syncom = "Tolerant"),
+phyl_tolerant_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 c("BOA", "DMSO"),
+                 p.adj = adjust,
+                 mincounts = 100, 
+                 method = corr_meth,
+                 OTUcol = "Genus",
+                 partial = TRUE) %>% 
+  mutate(Treatment = "no APO",
+          Syncom = "Tolerant")))
+
+rand_apo_others_partial <- bind_rows(list(
+  phyl_random_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 p.adj = adjust,
+                 mincounts = 100, 
+                 method = corr_meth,
+                 OTUcol = "Genus",
+                 partial = TRUE) %>%
+    mutate(Treatment = "APO",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  phyloseq_corrs("Treatment",
+                 c("BOA", "DMSO"),
+                 p.adj = adjust,
+                 mincounts = 100, 
+                 method = corr_meth,
+                 OTUcol = "Genus",
+                 partial = TRUE) %>% 
+  mutate(Treatment = "no APO",
+         Syncom = "Random"))) 
+
+tol_rand_apo_others_partial <- rbind(tol_apo_others_partial, rand_apo_others_partial)
+tol_rand_apo_others_p_partial <- tol_rand_apo_others_partial %>% 
+  filter(p < 0.1)
+```
+
+```{r}
+abundances_tol_rand_summarized_apo_others <- abundances_tol_rand %>% 
+  mutate(Treatment = case_when(Treatment == "APO" ~ Treatment,
+                               TRUE ~"no APO")) %>% 
+  group_by(Syncom, Genus, Strain, Treatment) %>% 
+  summarize(mean = mean(Abundance, na.rm = T),
+            sd = sd(Abundance, na.rm = T)) %>%
+  ungroup
+```
+
+```{r}
+set.seed(5)
+plot_partial_corrs_dat_apo_others <- tol_rand_apo_others_p_partial %>% 
+  igraph::graph_from_data_frame() %>% 
+  ggnetwork::ggnetwork(layout = igraph::with_fr(),
+                       arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement_no_time(Treatments = list("no APO","APO")) %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  left_join(abundances_tol_rand_summarized_apo_others, by = c("Syncom","Genus","Strain","Treatment"))
+```
+
+
+```{r}
+
+
+plot_partial_corrs_apo_others <- plot_partial_corrs_dat_apo_others %>% 
+  mutate(x = case_when(x == 1 ~ 0.7, TRUE ~ x ),
+           xend = case_when(xend == 1 ~ 0.7, TRUE ~ xend)) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = r), size = 1.5, curvature = 0.2, alpha = 0.9) +
+  geom_nodes(aes(size = mean + sd), color = "black") + 
+  geom_nodes(aes(size = mean - sd), color = "white") + 
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n")),  seed = 342, size= 3) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence), alpha = 0.3, seed=342, size= 3) +
+ # ggtitle("Partial correlations") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Treatment~Syncom,
+             scales = "free"
+             ) +
+  theme_blank() +
+  theme(text = element_text(family = "Arial"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+```
+```{r}
+genus_abundance_plot_random_tolerant / plot_partial_corrs_apo_others +
+  plot_layout(nrow = 2,heights = c(1,2), guides = "collect") +
+  plot_annotation(tag_levels = 'A') &
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial")) 
+```
+```{r}
+plot_partial_corrs_apo_others
+```
+
+
+
+```{r}
+rand_tol_relabund_overlap_plot_avg_timepoints <-
+  phyl_random_rel_strain %>% 
+  psmelt() %>%
+  filter(Strain %in% (phyl_tolerant_rel_strain %>% 
+                      psmelt() %>% 
+                      .$Strain)) %>% 
+  mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
+         Syncom = "Random") %>% 
+  rbind(phyl_tolerant_rel_strain %>% 
+    psmelt() %>%
+    filter(Strain %in% (phyl_random_rel_strain %>% 
+                                    psmelt() %>%
+                                    .$Strain)) %>% 
+    mutate(Genus_Strain = paste(Genus, Strain, sep = "\n"),
+           Syncom = "Tolerant") ) %>% 
+  ggplot(aes(y = Abundance,
+             x = fct_relevel(Treatment, c("Control")), 
+             color = Treatment)) +
+  stat_summary(aes(group = Treatment), fun.data = "mean_cl_boot", geom = "pointrange") +
+  theme_bw() + 
+  scale_y_continuous(n.breaks = 3) +
+  labs(y = "Relative abundance") +
+  ggthemes::scale_color_few() +
+  facet_wrap(paste(Syncom, Genus_Strain, sep = "\n") ~.,
+              scales = "free_y",
+              ncol = 2,
+              dir = "v",
+              strip.position = "top") +
+  #facet_grid(Genus_Strain ~ Syncom) +
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial"), 
+        strip.background = element_rect(fill = "white"),
+        strip.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+```{r}
+genus_abundance_plot_random_tolerant +
+  plot_partial_corrs + 
+  plot_layout(ncol = 2,widths = c(1,2), guides = "collect") +
+  plot_annotation(tag_levels = 'A') &
+  theme(legend.position = "bottom",
+        text = element_text(family = "Arial")) 
+```
+
+# Fig S4
+
+## Add Timepoints, treatments
+
+```{r}
+tol_rand_all_corrs_p <- tol_rand_all_24_96_corrs_p %>% 
+  bind_rows(list(
+    phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "48h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "Control",
+           Timepoint = "48h",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "72h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus")%>%
+    mutate(Treatment = "Control",
+           Timepoint = "72h",
+           Syncom = "Random"),
+    phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "48h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "BOA",
+           Timepoint = "48h",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "72h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus")%>%
+    mutate(Treatment = "BOA",
+           Timepoint = "72h",
+           Syncom = "Random"),
+    phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "48h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Timepoint = "48h",
+           Syncom = "Random") ,
+  phyl_random_glom_strain %>% 
+  subset_samples(Timepoint == "72h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus")%>%
+    mutate(Treatment = "APO",
+           Timepoint = "72h",
+           Syncom = "Random"),
+ ####
+ phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "48h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "Control",
+           Timepoint = "48h",
+           Syncom = "Tolerant") ,
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "72h") %>%
+  phyloseq_corrs("Treatment",
+                 "DMSO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus")%>%
+    mutate(Treatment = "Control",
+           Timepoint = "72h",
+           Syncom = "Tolerant"),
+    phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "48h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "BOA",
+           Timepoint = "48h",
+           Syncom = "Tolerant") ,
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "72h") %>%
+  phyloseq_corrs("Treatment",
+                 "BOA",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus")%>%
+    mutate(Treatment = "BOA",
+           Timepoint = "72h",
+           Syncom = "Tolerant"),
+    phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "48h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Timepoint = "48h",
+           Syncom = "Tolerant") ,
+  phyl_tolerant_glom_strain %>% 
+  subset_samples(Timepoint == "72h") %>%
+  phyloseq_corrs("Treatment",
+                 "APO",
+                 99,
+                 method = "pearson",
+                 OTUcol = "Genus") %>%
+    mutate(Treatment = "APO",
+           Timepoint = "72h",
+           Syncom = "Tolerant") ))
+```
+
+## Figure S4
+
+```{r}
+set.seed(646549)
+plot_dat <- tol_rand_all_corrs_p %>% 
+  graph_from_data_frame() %>% 
+  { permute(., sample(vcount(.))) }%>% 
+  ggnetwork::ggnetwork(layout = igraph::in_circle(),
+                       arrow.gap = F) %>% 
+  distinct() %>%
+  fix_node_placement(Treatments = list("APO","BOA","Control"),
+                     Timepoints = list("24h", "48h", "72h", "96h")) %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither"))
+FigS4A <- plot_dat %>%
+  filter(Syncom == "Random") %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = r), curvature = 0.05) +
+  geom_nodes() +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
+  ggtitle("Random syncom") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Timepoint~Treatment, scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+FigS4B <- plot_dat %>%
+  filter(Syncom == "Tolerant") %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = r), curvature = 0.05) +
+  geom_nodes() +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
+  ggtitle("Tolerant syncom") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Timepoint~Treatment, scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  # lims(x = c(-0.1,1.1),
+  #      y = c(-0.1,1.1)) +
+  NULL
+```
+
+```{r}
+FigS4A / FigS4B +
+  plot_annotation(title = "Fig S4",tag_levels = "A") +
+  plot_layout(guides = 'collect') &
+  theme(text=element_text(family = "NimbusMon"), 
+        legend.position = "bottom")
+```
+
+###
+
+### Sparcc
+
+```{r}
+sparcc_corrs <- function(phyl){
+tmp_strains <- phyl %>% 
+  tax_table() %>%
+  as.data.frame() %>% 
+  mutate(name = paste(Genus)) %>%
+  pull(name)
+sparcc_tmp <- phyl %>%
+  otu_table() %>% 
+  SpiecEasi::sparcc() %>%
+  .$Cor %>% 
+  set_colnames(tmp_strains) %>%
+  set_rownames(tmp_strains) %>% 
+  as.data.frame() %>%
+  rownames_to_column("Strain1")
+sparcc_tmp_long <- sparcc_tmp %>% 
+  pivot_longer(2:ncol(.), names_to = "Strain2", values_to = "cor") %>% 
+  dplyr::mutate(Combination = purrr::map2_chr(Strain1, Strain2, 
+                                              ~paste(sort(c(.x, .y)),
+                                                     collapse = ";"))) %>% 
+  dplyr::select(cor, Combination) %>% 
+  distinct() %>% 
+  separate(Combination, into = c("Strain1","Strain2"), sep = ";") %>% 
+  filter(!(Strain1 == Strain2)) %>% 
+  dplyr::select(Strain1, Strain2, cor)
+sparcc_tmp_long
+}
+
+# This is quite complicated
+sparcc_corrs_pvals <- function(phyl, reps = 500, n_cpu = 10) {
+tmp_strains <- phyl %>%
+  tax_table() %>%
+  as.data.frame() %>% 
+  mutate(name = paste(Genus)) %>%
+  pull(name)
+tmp_sparcc_boot <- phyl %>% 
+  otu_table() %>% 
+  SpiecEasi::sparccboot(R = reps, ncpus = n_cpu)
+tmp_sparcc_boot_pv <- tmp_sparcc_boot %>% 
+  SpiecEasi::pval.sparccboot()
+tmp_sparcc <- phyl %>%
+  otu_table() %>% 
+  SpiecEasi::sparcc()
+
+tmp_cors <- tmp_sparcc_boot_pv$cors
+
+sparCCpcors <- diag(0.5, nrow = dim(tmp_sparcc$Cor)[1], ncol = dim(tmp_sparcc$Cor)[1])
+sparCCpcors[upper.tri(sparCCpcors, diag=FALSE)] <- tmp_cors
+sparCCpcors<- sparCCpcors + t(sparCCpcors)
+
+tmp_pvals <- tmp_sparcc_boot_pv$pvals
+
+sparCCpvals <- diag(0.5, nrow = dim(tmp_sparcc$Cor)[1], ncol = dim(tmp_sparcc$Cor)[1])
+sparCCpvals[upper.tri(sparCCpvals, diag=FALSE)] <- tmp_pvals
+sparCCpvals<- sparCCpvals + t(sparCCpvals)
+
+rownames(sparCCpcors) <- tmp_strains
+colnames(sparCCpcors) <- tmp_strains
+rownames(sparCCpvals) <- tmp_strains
+colnames(sparCCpvals) <- tmp_strains
+
+sparCCpcors_long <- sparCCpcors %>% 
+  as.data.frame() %>% 
+  rownames_to_column("Strain1") %>% 
+  pivot_longer(2:ncol(.), names_to = "Strain2", values_to = "cor") %>% 
+  dplyr::mutate(Combination = purrr::map2_chr(Strain1, Strain2, 
+                                              ~paste(sort(c(.x, .y)),
+                                                     collapse = ";"))) %>% 
+  dplyr::select(cor, Combination) %>% 
+  distinct() %>% 
+  separate(Combination, into = c("Strain1","Strain2"), sep = ";") %>% 
+  filter(!(Strain1 == Strain2)) %>% 
+  dplyr::select(Strain1, Strain2, cor)
+  
+sparCCpvals_long <-  sparCCpvals %>% 
+  as.data.frame() %>% 
+  rownames_to_column("Strain1") %>% 
+  pivot_longer(2:ncol(.), names_to = "Strain2", values_to = "pval") %>% 
+  dplyr::mutate(Combination = purrr::map2_chr(Strain1, Strain2, 
+                                              ~paste(sort(c(.x, .y)),
+                                                     collapse = ";"))) %>% 
+  dplyr::select(pval, Combination) %>% 
+  distinct() %>% 
+  separate(Combination, into = c("Strain1","Strain2"), sep = ";") %>% 
+  filter(!(Strain1 == Strain2)) %>% 
+  dplyr::select(Strain1, Strain2, pval)
+  
+sparCC_long <- left_join(sparCCpcors_long, sparCCpvals_long, by = c("Strain1","Strain2"))
+sparCC_long
+}
+
+```
+
+```{r}
+tolerant_strains_genus <- phyl_tolerant_rel_strain %>% 
+  psmelt() %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(Syncom = "Tolerant") %>% 
+  distinct()
+random_strains_genus <- phyl_random_rel_strain %>% 
+  psmelt() %>% 
+  dplyr::select(Genus, Strain) %>%
+  mutate(Syncom = "Random") %>% 
+  distinct()
+```
+
+
+```{r}
+tol_apo_boa_24_96_sparcc <- bind_rows(
+  list(
+  phyl_tolerant_rel_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  subset_samples(Treatment == "APO") %>% 
+  sparcc_corrs_pvals %>%
+    mutate(Treatment = "APO",
+           Syncom = "Tolerant",
+           Timepoint = "96h"),
+  phyl_tolerant_rel_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  subset_samples(Treatment == "APO") %>% 
+  sparcc_corrs_pvals %>% 
+    mutate(Treatment = "APO",
+           Syncom = "Tolerant",
+           Timepoint = "24h"),
+  phyl_tolerant_rel_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  subset_samples(Treatment == "BOA") %>% 
+  sparcc_corrs_pvals %>%
+  mutate(Treatment = "BOA",
+         Timepoint = "96h",
+          Syncom = "Tolerant"),
+  phyl_tolerant_rel_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  subset_samples(Treatment == "BOA") %>% 
+  sparcc_corrs_pvals %>% 
+  mutate(Treatment = "BOA",
+         Timepoint = "24h",
+          Syncom = "Tolerant")))
+
+rand_apo_boa_24_96_sparcc <- bind_rows(
+  list(
+ phyl_random_rel_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  subset_samples(Treatment == "APO") %>% 
+  sparcc_corrs_pvals %>%
+    mutate(Treatment = "APO",
+           Syncom = "Random",
+           Timepoint = "96h"),
+  phyl_random_rel_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+  subset_samples(Treatment == "APO") %>% 
+  sparcc_corrs_pvals %>% 
+    mutate(Treatment = "APO",
+           Syncom = "Random",
+           Timepoint = "24h"),
+  phyl_random_rel_strain %>% 
+  subset_samples(Timepoint == "96h") %>%
+  subset_samples(Treatment == "BOA") %>% 
+  sparcc_corrs_pvals %>%
+  mutate(Treatment = "BOA",
+         Timepoint = "96h",
+          Syncom = "Random"),
+  phyl_random_rel_strain %>% 
+  subset_samples(Timepoint == "24h") %>%
+    subset_samples(Treatment == "BOA") %>% 
+  sparcc_corrs_pvals %>% 
+  mutate(Treatment = "BOA",
+         Timepoint = "24h",
+          Syncom = "Random")))
+tol_rand_apo_boa_24_96_sparcc <- rbind(tol_apo_boa_24_96_sparcc, rand_apo_boa_24_96_sparcc)
+```
+
+```{r}
+tol_rand_apo_boa_24_96_sparcc %>% 
+  #filter(abs(cor) > 0.5) %>% 
+  igraph::graph_from_data_frame() %>% 
+  #{ permute(., sample(vcount(.))) } %>% 
+  ggnetwork::ggnetwork(arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement() %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  left_join(abundances_tol_rand, by = c("Syncom","Strain","Treatment","Timepoint")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = cor), curvature = 0.2) +
+  geom_nodes(aes(size = Abundance)) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
+  ggtitle("Sparcc network") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~paste(Treatment, Timepoint, sep = ": "), scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  lims(x = c(-0.2,1.2),
+      y = c(-0.2,1.2)) +
+  NULL
+```
+
+
+```{r}
+tol_rand_apo_boa_24_96_sparcc %>% 
+  filter(abs(cor) > 0.3) %>% 
+  igraph::graph_from_data_frame() %>% 
+  #{ permute(., sample(vcount(.))) } %>% 
+  ggnetwork::ggnetwork(arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement() %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  left_join(abundances_tol_rand, by = c("Syncom","Strain","Treatment","Timepoint")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = cor), curvature = 0.2) +
+  geom_nodes(aes(size = Abundance)) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
+  ggtitle("Sparcc network, cor > 0.3") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~paste(Treatment, Timepoint, sep = ": "), scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  lims(x = c(-0.2,1.2),
+      y = c(-0.2,1.2)) +
+  NULL
+```
+```{r}
+tol_rand_apo_boa_24_96_sparcc %>% 
+  filter(pval < 0.05) %>% 
+  igraph::graph_from_data_frame() %>% 
+  #{ permute(., sample(vcount(.))) } %>% 
+  ggnetwork::ggnetwork(arrow.gap = F) %>% 
+  distinct() %>% 
+  fix_node_placement() %>% 
+  mutate(Genus = name) %>%  
+  left_join(rbind(tolerant_strains_genus, random_strains_genus),
+            by = c("Syncom","Genus")) %>% 
+  mutate(presence = case_when(Strain %in% intersect(tol_strains, rand_strains) ~ "Both",
+                               Strain %in% tol_strains ~ "Only one",
+                               Strain %in% rand_strains ~ "Only one",
+                               TRUE ~"Neither")) %>% 
+  left_join(abundances_tol_rand, by = c("Syncom","Strain","Treatment","Timepoint")) %>% 
+  ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+  geom_edges(aes(color = cor), curvature = 0.2) +
+  geom_nodes(aes(size = Abundance)) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"), family = "NimbusMon"),  seed =1232, size= 2) +
+  geom_nodelabel_repel(aes(label = paste(Genus, Strain, sep = "\n"),  fill = presence, family = "NimbusMon"), alpha = 0.3, seed=1232, size= 2) +
+  ggtitle("Sparcc network, p < 0.05") +
+  scale_color_viridis_c(option = "C") +
+  ggthemes::scale_fill_canva(palette = 'Corporate and sleek') +
+  facet_grid(Syncom~paste(Treatment, Timepoint, sep = ": "), scales = "free") +
+  theme_blank() +
+  theme(text = element_text(family = "NimbusMon"),
+        strip.background = element_rect(fill = "white"),
+        panel.border = element_rect(fill = NA)) +
+  lims(x = c(-0.2,1.2),
+      y = c(-0.2,1.2)) +
+  NULL
+```
+```{r}
+phyl_tolerant_rel_strain %>% 
+  subset_samples(Treatment == "APO") %>%
+  sparcc_corrs_pvals()
+phyl_tolerant_rel_strain %>% 
+  subset_samples(Treatment != "APO") %>% 
+  sparcc_corrs_pvals(reps = 2000, n_cpu = 16)
+```
+
+
+```{r}
+phyl_random_rel_strain %>% subset_samples(Treatment == "APO") %>% sparcc_corrs_pvals()
+phyl_random_rel_strain %>% subset_samples(Treatment != "APO") %>% subset_samples(Timepoint == "24h") %>% sparcc_corrs_pvals(reps = 2000, n_cpu = 16)
+```
+
+
+

@@ -23,7 +23,7 @@ overlay_corrnet <- function(network1 = NULL,
   full_net <- full_join(network1 %>% filter(abs(r) > cutoff),
                         network2 %>% filter(abs(r) > cutoff),
                         by = c("x", "y"), 
-                        suffix =c("_1", "_2")) # This is much easier than tryin to use the treat1 and treat2 vars here, also the vars are not helpful at this stage.
+                        suffix =c("_1", "_2")) # This is much easier than trying to use the treat1 and treat2 vars here, also the vars are not helpful at this stage.
   
   full_net %<>%
     mutate(corr_1 = case_when(r_1 < 0 ~ "Negative",
@@ -47,8 +47,9 @@ overlay_corrnet <- function(network1 = NULL,
        (corr_1 == "Positive") & (corr_2 == "Positive") ~ "Positive (both)",
        (corr_1 == "Negative") & (corr_2 == "Negative") ~ "Negative (both)",
        (corr_1 == "Negative") & (corr_2 == "Positive")  ~ paste("Negative in", treat1, 
-                                                                "Positive in", treat2),
-       (corr_1 == "Positive") & (corr_2 == "Negative") ~ paste("Positive in",treat1,                                                                        "Negative in", treat2),
+                                                                "/ Positive in", treat2),
+       (corr_1 == "Positive") & (corr_2 == "Negative") ~ paste("Positive in",treat1,   
+                                                               "/ Negative in", treat2),
        (corr_2 == "NA") & (corr_1 == "Positive") ~ paste(treat1, "Positive"),
        (corr_2 == "NA") & (corr_1 == "Negative") ~ paste(treat1, "Negative"),
        (corr_1 == "NA") & (corr_2 == "Positive") ~ paste(treat2, "Positive"),
@@ -66,6 +67,6 @@ overlay_corrnet <- function(network1 = NULL,
   full_net <- full_net %>%
     dplyr::select(x,y, edge) %>% 
     igraph::graph_from_data_frame() %>% 
-    ggnetwork::ggnetwork()
+    ggnetwork::ggnetwork(arrow.gap = F)
   return(full_net)
 }

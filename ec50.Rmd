@@ -1,0 +1,82 @@
+---
+title: "EC50"
+author: "Niklas Schandry"
+date: "27 4 2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(dr4pl)
+library(m)
+```
+
+
+```{r}
+tax_info <- read_rds("files_publication/taxonomy.rds")
+### read growth data
+AUC_emmeans <- read_rds("files_publication/AUC_emmeans_pub.rds") %>% 
+  left_join(tax_info %>%
+            dplyr::select(Genus, Class, Order), by = "Genus")
+```
+
+# Plots
+
+```{r}
+for(current_strain in unique(AUC_emmeans %>% filter(!Strain %in% c("Root236", "Root954")) %$% Strain)){
+  cat(paste(current_strain,"\n"))
+  AUC_emmeans %>%
+   filter(Chem %in% c("APO","Control"), Strain == current_strain) %>% 
+   split(.$Strain) %>%
+   map(~ dr4pl(AUC_norm~Conc, data = .x) %>%
+        plot())
+}
+```
+
+
+```{r}
+AUC_emmeans %>%
+   filter(Chem %in% c("APO","Control"), !Strain %in% c("Root236", "Root954")) %>% 
+   split(.$Strain) %>%
+   map(~ dr4pl(AUC_norm~Conc, data = .x) %>%
+        plot())
+```
+
+# Summaries
+
+```{r}
+# AUC_emmeans %>%
+#   filter(Chem %in% c("APO","Control"), Strain != "Root954") %>% 
+#   split(.$Strain) %>%
+#   map(~ dr4pl(AUC_norm~Conc, data = .x) %>%
+#         summary())
+```
+
+```{r}
+df_50 <- AUC_emmeans %>% 
+   filter(Chem %in% c("APO","Control"), !Strain %in% c("Root236", "Root954")) %>% 
+  split(.$Strain) %>%
+  map_df(~ dr4pl(AUC_norm~Conc, data = .x) %$%
+           parameters %>%
+           .[[2]] ) %>%
+  t %>%
+  as.data.frame() %>%
+  rownames_to_column("Strain")
+colnames(df_50) <- c("Strain","Dose")
+```
+
+```{r}
+df_50 %>% left_join(AUC_emmeans %>% dplyr::select(Strain, Genus, Family, Order, Class, Phylum) %>% unique) %>% 
+  filter(Dose < 1e5) %>% 
+  ggplot(aes(x = Family, y=log10(Dose))) +
+           geom_boxplot(aes(color = Order)) +
+  geom_point()
+```
+```{r}
+df_50 %>%
+  left_join(AUC_emmeans %>% dplyr::select(Strain, Genus, Family, Order, Class, Phylum) %>% unique) %>% 
+  filter(Dose < 1e5) %>% 
+  {lm(Dose ~ Genus,data = .)} %>% 
+  aov()
+```
+

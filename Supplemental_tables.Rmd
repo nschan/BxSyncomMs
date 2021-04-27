@@ -14,7 +14,16 @@ library(magrittr)
 
 # Tables
 
-## Table S1. Syncom strains
+## Table S1. Phylogenetic signal lambda
+
+```{r echo=F}
+readr::read_rds("files_publication/TabSupp_lambda.rds") %>% 
+  gt::as_latex()
+```
+
+\newpage
+
+## Table S2. Syncom strains
 
 ```{r echo =F}
 readr::read_rds("files_publication/syncom_membership.rds") %>% 
@@ -24,77 +33,97 @@ readr::read_rds("files_publication/syncom_membership.rds") %>%
   gt::as_latex()
 ```
 
+
 \newpage
 
-## Table S2. PERMANOVA
+## Table S3. PERMANOVA
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS2_permanova_gt.rds") %>% 
+readr::read_rds("files_publication/TabS3_permanova_gt.rds") %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-## Table S3. PERMANOVA comparing only two treatments
+## Table S4. PERMANOVA comparing only two treatments
 
 ```{r echo = F}
-readr::read_rds("files_publication/TabS3_PERMANOVA_per_treatment_gt.rds") %>% 
+readr::read_rds("files_publication/TabS4_PERMANOVA_per_treatment_gt.rds") %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-## Table S4. ANOVA: Observed taxa
+## Table S5. ANOVA: Observed taxa
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS4_AOV_observed.rds") %>% 
+readr::read_rds("files_publication/TabS5_AOV_observed.rds") %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-## Table S5. Observed diversity means and pairwise comparisons
+## Table S6. Observed diversity means and pairwise comparisons
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS5_overserved_pairwise.rds")  %>% 
+readr::read_rds("files_publication/TabS6_overserved_pairwise.rds")  %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-## Table S6. ANOVA: Shannon Diversity
+## Table S7. ANOVA: Shannon Diversity
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS6_AOV_shannon.rds") %>% 
+readr::read_rds("files_publication/TabS7_AOV_shannon.rds") %>% 
   gt::as_latex()
 ```
 
 \newpage
 
-## Table S7. Shannon diversity means and pairwise comparisons
+## Table S8. Shannon diversity means and pairwise comparisons
 
 ```{r echo=F}
-readr::read_rds("files_publication/TabS7_shannon_pairwise.rds") %>% 
+readr::read_rds("files_publication/TabS8_shannon_pairwise.rds") %>% 
   gt::as_latex()
 ```
+
+\newpage
+
+## Table S9. Correlation between change in relative abundance and change in growth
+
+```{r echo =F}
+readr::read_rds("files_publication/rsquare_l2FC_AUC.rds") %>%
+  dplyr::arrange(AUC) %>% 
+  dplyr::mutate(AUC = dplyr::case_when(AUC == "abs" ~ "log2FC vs absolute AUC",
+                         AUC == "rel" ~ "log2FC vs relative AUC")) %>% 
+  dplyr::group_by(AUC) %>% 
+  gt::gt() %>% 
+  gt::as_latex()
+```
+
+\newpage
 
 # Figures
 
-## Supplemental Figure 1
+## Supplemental Figure S1
 
 ![](Supplemental_Figures/Figure_S1.png)
-**Supplemental Figure 1. Observed alpha diversity.** The number of observed bacterial genera of the samples belonging to the four different syncoms (**A-D**) is shown for each time point (facet) and treatment (color). Each sample is plotted as a dot, and box-and-whisker plots show the summary statistics for each treatment / time point combination.
+**Supplemental Figure S1. Bx sensitivity of Xanthomonadales.** Genera belonging to the Order Xanthomonadales are plotted. The tree was constructed from concatenated sequences (see methods). The upper 3 rows of the heatmap display relative growth in 10µM, 50µM and 100µM BOA (top to bottom), the lower four rows of the heatmap relative growth in medium supplemented with 1µM, 5µM, 10µM and 50µM APO.
 
-\newpage
-
-## Supplemental Figure 2
+## Supplemental Figure S2
 
 ![](Supplemental_Figures/Figure_S2.png)
-**Supplemental Figure 2. Shannon diversity indices of the synthetic communities.** The Shannon indices of the samples belonging to the four different syncoms (*A-D*) are shown for each time point (facet) and treatment (color). Each sample is plotted as a dot, and box-and-whisker plots show the summary statistics for each treatment / time point combination.
+**Supplemental Figure S2. Observed alpha diversity.** The number of observed bacterial genera of the samples belonging to the four different syncoms (**A-D**) is shown for each time point (facet) and treatment (color). Each sample is plotted as a dot, and box-and-whisker plots show the summary statistics for each treatment / time point combination. \newpage
 
-\newpage
-
-## Supplemental Figure 3
+## Supplemental Figure S3
 
 ![](Supplemental_Figures/Figure_S3.png)
-**Supplemental Figure 3. Correlation networks.** Networks of isolate Pearson’s correlations in the random **(A)** and tolerant **(B)** syncom. Each individual plot shows correlations between isolates for one time point and treatment combination. The color of each edge indicates the strength, and sign of the correlation (blue: negative correlation; yellow: positive) and each node represents one isolate. The background color of the node label indicates whether an isolate was part of both communities (white) or only included in one (gray). Only correlations where |r| > 0.5 were included.
+**Supplemental Figure S3. Shannon diversity indices of the synthetic communities.** The Shannon indices of the samples belonging to the four different syncoms (*A-D*) are shown for each time point (facet) and treatment (color). Each sample is plotted as a dot, and box-and-whisker plots show the summary statistics for each treatment / time point combination.
+
+## Supplemental Figure S4
+
+![](Supplemental_Figures/Figure_S4.png)
+
+**Supplemental Figure S4. Changes in relative abundance by community.**
+**A-D** The relative abundance over time for different isolates that showed signficant differences in relative abundance at at least one timepoint (compared to control). Relative abundance is shown per treatment and timepoint, errorbars indicate 95% CI. **E** Changes in relative abundance per treatment and timepoint for isolates that were found in more than one community. Errorbars indicate s.e. of the log2Foldchange.

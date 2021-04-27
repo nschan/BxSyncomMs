@@ -67,196 +67,6 @@ fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
 write_rds(fit_GTR, "files_publication/Strain_tree.rds")
 ```
 
-Make tree of 16S and gyrB concatenated
-
-```{r}
-Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
-  as.data.frame() %>%
-    set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-all_16s <- bind_rows(Root_16S,Soil_16S) 
-all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("gyrB") %>% 
-  rownames_to_column("Strain") 
-phenotyped_set_16s_gyrB <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
-  mutate(seq = paste0(rRNA16S,gyrB)) %>% filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
-
-relevant_gyrB_16S <- phenotyped_set_16s_gyrB %$% DNAStringSet(seq)
-names(relevant_gyrB_16S) <- phenotyped_set_16s_gyrB$Strain
-
-
-
-seqs_aligned <- AlignSeqs(relevant_gyrB_16S, anchor=NA)
-
-### Make tree
-phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
-dist_m <- dist.ml(phang_align)
-tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
-fit = pml(tree_NJ, data=phang_align)
-### Make GTR tree
-fit_GTR <- update(fit, k=4, inv=0.2)
-fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
- rearrangement = "stochastic", control = pml.control(trace = 0))
-write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB.rds")
-```
-
-Make tree of 16S, gyrB and rpoB concat
-
-```{r}
-Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
-  as.data.frame() %>%
-    set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-all_16s <- bind_rows(Root_16S,Soil_16S) 
-all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("gyrB") %>% 
-  rownames_to_column("Strain") 
-all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rpoB") %>% 
-  rownames_to_column("Strain") 
-
-phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
-  left_join(all_rpoB, by = "Strain") %>% 
-  mutate(seq = paste0(rRNA16S,gyrB,rpoB)) %>% filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
-
-relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
-names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
-
-
-
-seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
-
-### Make tree
-phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
-dist_m <- dist.ml(phang_align)
-tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
-fit = pml(tree_NJ, data=phang_align)
-### Make GTR tree
-fit_GTR <- update(fit, k=4, inv=0.2)
-fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
- rearrangement = "stochastic", control = pml.control(trace = 0))
-write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB.rds")
-```
-Make tree of 16S, gyrB rpoB and recA concat
-
-```{r}
-Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
-  as.data.frame() %>%
-    set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-all_16s <- bind_rows(Root_16S,Soil_16S) 
-all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("gyrB") %>% 
-  rownames_to_column("Strain") 
-all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rpoB") %>% 
-  rownames_to_column("Strain") 
-all_recA <- read_fasta("files_publication/AtSphere_recA.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("recA") %>% 
-  rownames_to_column("Strain") 
-
-phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
-  left_join(all_rpoB, by = "Strain") %>% 
-  left_join(all_recA, by = "Strain") %>% 
-  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA)) %>% 
-        filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
-
-relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
-names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
-
-
-
-seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
-
-### Make tree
-phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
-dist_m <- dist.ml(phang_align)
-tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
-fit = pml(tree_NJ, data=phang_align)
-### Make GTR tree
-fit_GTR <- update(fit, k=4, inv=0.2)
-fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
- rearrangement = "stochastic", control = pml.control(trace = 0))
-write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB_recA.rds")
-```
-
-Make tree of 16S, gyrB rpoB and recA and dnaJ concat
-
-```{r}
-Root_16S <- read_fasta("files_publication/16SrRNA_Root_isolates_WGS.fasta") %>% 
-  as.data.frame() %>%
-    set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-Soil_16S <- read_fasta("files_publication/16SrRNA_Soil_isolates_WGS.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rRNA16S") %>%
-  rownames_to_column("Strain")
-all_16s <- bind_rows(Root_16S,Soil_16S) 
-all_gyrB <- read_fasta("files_publication/AtSphere_gyrB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("gyrB") %>% 
-  rownames_to_column("Strain") 
-all_rpoB <- read_fasta("files_publication/AtSphere_rpoB.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("rpoB") %>% 
-  rownames_to_column("Strain") 
-all_recA <- read_fasta("files_publication/AtSphere_recA.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("recA") %>% 
-  rownames_to_column("Strain") 
-all_dnaJ <- read_fasta("files_publication/AtSphere_dnaJ.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("dnaJ") %>% 
-  rownames_to_column("Strain") 
-all_atpD <- read_fasta("files_publication/AtSphere_aptD.fasta") %>%
-  as.data.frame() %>% 
-  set_colnames("atpD") %>% 
-  rownames_to_column("Strain") 
-
-phenotyped_set_concat <- left_join(all_16s, all_gyrB, by = "Strain") %>% 
-  left_join(all_rpoB, by = "Strain") %>% 
-  left_join(all_recA, by = "Strain") %>% 
-  left_join(all_dnaJ, by = "Strain") %>% 
-  left_join(all_atpD, by = "Strain") %>% 
-  mutate(seq = paste0(rRNA16S,gyrB,rpoB,recA,dnaJ,atpD)) %>% 
-        filter(Strain %in% AUC_emmeans$Strain) %>% filter(Strain != "Root763")
-
-relevant_concat_seqs <- phenotyped_set_concat %$% DNAStringSet(seq)
-names(relevant_concat_seqs) <- phenotyped_set_concat$Strain
-
-
-
-seqs_aligned <- AlignSeqs(relevant_concat_seqs, anchor=NA)
-
-### Make tree
-phang_align <- phyDat(as(seqs_aligned, "matrix"), type="DNA")
-dist_m <- dist.ml(phang_align)
-tree_NJ <- NJ(dist_m) #  Note, tip order != sequence order
-fit = pml(tree_NJ, data=phang_align)
-### Make GTR tree
-fit_GTR <- update(fit, k=4, inv=0.2)
-fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
- rearrangement = "stochastic", control = pml.control(trace = 0))
-write_rds(fit_GTR, "files_publication/Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD.rds")
-```
 Make tree of 16S, gyrB, rpoB, recA, atpD, dnaJ and thrC concat
 
 ```{r}
@@ -329,7 +139,7 @@ For reasons that are not completely clear, the order and class information is mi
 This information will be added from the bac120_taxonomy.tsv (genome taxonomy database https://www.nature.com/articles/nbt.4229) 
 
 ```{r eval = F}
-tax_info <- read_tsv("files_publication/bac120_taxonomy.tsv") %>%
+tax_info <- read_tsv("files_publication/bac120_taxonomy_r95.tsv") %>%
   set_colnames(c("col1", "col2")) %>% 
   dplyr::select(col2) %>% 
   mutate(col2 = col2 %>% str_remove_all("[a-z]__")) %>% 
@@ -344,15 +154,18 @@ tax_info <- rbind(tax_info,
               "Burkholderiales",
               "Comamonadaceae",
               "Acidovorax")) %>% 
-            rbind(
-             c("Bacteria",
+            rbind(c("Bacteria",
                "Proteobacteria",
                "Gammaproteobacteria",
                "Xanthomonadales",
                "Xanthomonadaceae",
-               "Pseudoxanthomonas"))
+               "Pseudoxanthomonas")) %>% 
+  # fix wrong taxonomy?
+  mutate(Family = case_when(Genus == "Rhizobacter" ~ "Burkholderiales"),
+         Class = case_when(Order == "Burkholderiales" ~ "Betaproteobacteria",
+                           TRUE ~ Class))
 
-write_rds(tax_info, "data/taxonomy.rds")
+write_rds(tax_info, "files_publication/taxonomy.rds")
 ```
 
 # Read files
@@ -361,16 +174,23 @@ Read the growth data and the tree
 
 ```{r}
 tax_info <- read_rds("files_publication/taxonomy.rds")
-### read growth data
-AUC_emmeans <- read_rds("files_publication/AUC_emmeans_pub.rds") %>% 
-  left_join(tax_info %>%
-            dplyr::select(Genus, Class, Order), by = "Genus")
-tree_data <- AUC_emmeans %>% 
-  mutate(id = str_c(Genus,Strain ,sep ="_"))
+
+
 
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR <- read_rds("files_publication/Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+### read growth data
+AUC_emmeans <- read_rds("files_publication/AUC_emmeans_pub.rds") %>%
+  mutate(Family = case_when(Genus == "Rhizobacter" ~ "Burkholderiales",
+                            TRUE ~ Family)) %>% 
+  left_join(tax_info %>%
+            dplyr::select(Genus, Class, Order), by = "Genus") %>% 
+  filter(Strain %in% fit_GTR$tree$tip.label) ## Keep only those with sequences
+
+tree_data <- AUC_emmeans %>% 
+  mutate(id = str_c(Genus,Strain ,sep ="_"))
+
 fit_GTR$tree$tip.label %<>%
   as.data.frame() %>% 
   set_colnames("Strain") %>%
@@ -395,7 +215,17 @@ syncoms <-  rbind(
                    dplyr::select(Strain) %>%
                    mutate(Syncom = "Random")
                  )
-
+# Define colors for plotting
+set.seed(42069)
+family_colors <-  sample(c('#543005','#8c510a','#bf812d',
+                           '#dfc27d','#f6e8c3','#4d9221',
+                           '#c7eae5','#80cdc1','#35978f',
+                           '#01665e','#003c30','#8e0152',
+                           '#c51b7d','#de77ae','#f1b6da',
+                           '#fde0ef','#000000','#e6f5d0',
+                           '#b8e186','#7fbc41','#fb8072',
+                           '#276419','#40004b','#bababa'),24)
+names(family_colors) <- AUC_emmeans$Family %>% unique %>% sort
 ```
 
 # Some descriptive stats of the growth data
@@ -446,6 +276,208 @@ AUC_emmeans %>%
     ggtitle("Estimated relative growth for BOA treatments")
 ```
 
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x  == "50uM_APO") %>%
+  dplyr::select(Strain, estimate, Phylum, Class, Order, Family, Genus) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_density(aes(x=estimate, 
+                   color = Class,
+                   fill = Class), alpha = 0.4) +
+  geom_density(aes(x=estimate), alpha = 1) +
+  facet_wrap(~Phylum) +
+  theme_bw(base_family = "NimbusMon") +
+  theme(strip.background = element_rect(fill = "white"), 
+        legend.position = "bottom") +
+  ggtitle("Relative growth in 50uM APO") 
+```
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x  == "50uM_APO") %>%
+  dplyr::select(Strain, estimate, Class, Order, Family, Genus) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_density(aes(x=estimate, 
+                   color = Family,
+                   fill = Family), alpha = 0.4) +
+  geom_density(aes(x=estimate, 
+                   color = Family), alpha = 1) +
+  geom_density(aes(x=estimate), alpha = 1) +
+  facet_wrap(~fct_relevel(Class,
+                          "Alphaproteobacteria",
+                         "Betaproteobacteria",
+                         "Gammaproteobacteria",
+                         "Actinomycetia",
+                         "Bacteroidia",
+                         "Bacilli")) +
+  scale_color_manual(values = family_colors) +
+  scale_fill_manual(values = family_colors) +
+  theme_bw(base_family = "Arial") +
+  theme(strip.background = element_rect(fill = "white"), 
+        legend.position = "none"
+        ) +
+  labs(title = "Relative growth in 50uM APO",
+       x = "AUC[APO] / AUC[Control]") 
+```
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x  == "50uM_APO") %>%
+  #dplyr::select(Strain, AUC_norm, Class, Order, Family, Genus) %>% 
+  #distinct() %>% 
+  # Drop Families with less than 2 members
+  #filter(!Family %in% c("Moraxellaceae","Nocardiaceae","Mycobacteriaceae")) %>% 
+  ggplot() +
+  geom_point(aes(y = Family, 
+                 x = estimate, 
+                 fill = Family,
+                 group = Strain),
+             pch =21,
+             alpha=0.3,
+             size = 3,
+             stat = "summary") +
+  ggridges::geom_density_ridges(aes(x=AUC_norm, 
+                                    y=Family,
+                   color = Family,
+                   fill = Family), 
+                   alpha = 0.4) +
+  facet_wrap(~fct_relevel(Class,
+                          "Alphaproteobacteria",
+                         "Betaproteobacteria",
+                         "Gammaproteobacteria",
+                         "Actinomycetia",
+                         "Bacteroidia",
+                         "Bacilli"),
+             scales = "free_y") +
+  scale_color_manual(values = family_colors) +
+  scale_fill_manual(values = family_colors) +
+  theme_bw(base_family = "Arial") +
+  theme(strip.background = element_rect(fill = "white"), 
+        legend.position = "none",
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  labs(x = "AUC[APO] / AUC[Control]") +
+  lims(x=c(-0.3,1.6)) +
+  NULL
+```
+
+
+
+```{r}
+
+AUC_emmeans %>% 
+  filter(Treat.x  == "50uM_APO", Phylum == "Proteobacteria") %>%
+  dplyr::select(Strain, estimate, Class, Order, Family, Genus) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_density(aes(x=estimate, 
+                   color = Family,
+                   fill = Family), alpha = 0.4) +
+  geom_density(aes(x=estimate, 
+                   color = Family), alpha = 0.4) +
+  geom_density(aes(x=estimate), alpha = 1) +
+    scale_color_manual(values = family_colors) +
+  scale_fill_manual(values = family_colors) +
+  facet_wrap(~Class) +
+  theme_bw(base_family = "NimbusMon") +
+  theme(strip.background = element_rect(fill = "white")) +
+  ggtitle("Estimated relative growth for 50µM APO treatments")
+```
+
+```{r}
+AUC_emmeans %>% 
+  filter(Treat.x  == "50uM_APO") %>%
+  dplyr::select(Strain, estimate, Class, Order, Family, Genus) %>% 
+  distinct() %>% 
+  ggplot() +
+  geom_density(aes(x=estimate, 
+                   #color = Treatment, 
+                   fill = Family), alpha = 0.3) +
+  facet_wrap(~Order) +
+  theme_bw(base_family = "NimbusMon") +
+  ggtitle("Estimated relative growth for APO treatments")
+```
+
+```{r}
+AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50) %$% 
+  var(AUC_norm)
+```
+
+```{r}
+AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50) %>%
+  group_by(Order) %>% 
+  summarize(variance = var(AUC_norm))
+AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50) %>%
+  group_by(Family) %>% 
+  summarize(variance = var(AUC_norm))
+AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50) %>%
+  group_by(Genus) %>% 
+  summarize(variance = var(AUC_norm))
+```
+
+```{r}
+AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50) %>%
+  group_by(Family) %>% 
+  summarize(variance = var(AUC_norm)) %$%
+  range(variance)
+  
+```
+
+
+```{r}
+auc_apo_lm <- lm(AUC_norm ~ Class + Order + Family + Genus,
+   data = AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50))
+auc_apo_lm %>% anova
+```
+
+```{r}
+summary(auc_apo_lm) 
+```
+```{r}
+auc_apo_lm %>% emmeans::emmeans("Family")
+```
+
+Get variance, within, between
+
+```{r}
+library(nlme)
+lme(AUC_norm~1, random=~1|Family,
+   data = AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50)) %>% 
+VarCorr()
+# Within, between
+lme(AUC_norm~1, random=~1|Class,
+   data = AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50)) %>% 
+VarCorr()
+```
+Residuals
+
+```{r}
+summary(auc_apo_lm)$sigma**2
+```
+
+```{r}
+lm(AUC_norm ~ Family,
+   data = AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50)) %>% 
+  summary() %>% 
+  vcov() %>% 
+  diag()
+```
+```{r}
+lm(AUC_norm ~ Genus,
+   data = AUC_emmeans %>%
+     filter(Chem == "APO", Conc == 50)) 
+```
+
+
 # Heatmap tree
 
 ```{r}
@@ -468,8 +500,8 @@ tree_plot_data <- cbind(
              separate(id, into = c("Genus","Strain"), sep = "_", remove = FALSE) %>% 
              left_join(., AUC_emmeans %>% dplyr::select(Strain, Family, Order, Class, Phylum), by = "Strain") %>% 
              distinct()  ,
-          dummy1 = c(rep(NA,180)),
-          dummy2 = c(rep(NA,180)),
+          dummy1 = c(rep(NA,174)),
+          dummy2 = c(rep(NA,174)),
          tree_data %>% filter(Chem == "BOA")  %>%
              mutate(Chem_conc = paste0(Chem,Conc)) %>% 
              dplyr::select(id,Chem_conc, estimate) %>%
@@ -510,20 +542,13 @@ fan_tree_family <- tree_structure %>%
   ggtree(branch.length = "none",
          layout = "fan",
          open.angle = 10) %<+% (tree_plot_data %>% mutate(Phylum_Family = paste(Phylum, Family, sep = "_")))
-set.seed(42069)
+
 fan_tree_family <- fan_tree_family +
     geom_tippoint(aes(color =  Family,
                       shape = Class),
                   size = 1) +
   scale_color_manual("Family",
-                     values = sample(c('#543005','#8c510a','#bf812d',
-                                '#dfc27d','#f6e8c3','#4d9221',
-                                '#c7eae5','#80cdc1','#35978f',
-                                '#01665e','#003c30','#8e0152',
-                                '#c51b7d','#de77ae','#f1b6da',
-                                '#fde0ef','#000000','#e6f5d0',
-                                '#b8e186','#7fbc41','#fb8072',
-                                '#276419','#40004b','#bababa'),24),
+                     values = family_colors,
                      guide = "legend") +
   scale_shape(breaks = c("Alphaproteobacteria",
                          "Betaproteobacteria",
@@ -537,6 +562,7 @@ fan_tree_family <- fan_tree_family +
 fan_tree_family <- fan_tree_family + guides(Family = guide_legend(ncol = 2, byrow = TRUE))
 ```
 
+### Add heatmaps
 
 ```{r}
 heat_boa_fam <- gheatmap(fan_tree_family,
@@ -607,29 +633,22 @@ heat_boa_apo_fam_syncom <- gheatmap(heat_boa_apo_fam,
          colnames_angle = 90,
          hjust = 0.5,
          font.size = 0) + 
-  ggthemes::scale_fill_few(na.value = "grey80",
+  scale_fill_manual(na.value = "grey80",
                            name = "Syncom",
-                           labels = c("Random",
-                                      "Tolerant",
-                                      "Mixed",
-                                      "Sensitive"),
-                           breaks = c("Random",
-                                      "Tolerant",
-                                      "Mixed",
-                                      "Sensitive")) +
+                           values = syncom_colors) +
   theme(text = element_text(family = "NimbusMon"),
         legend.position = "left") 
 heat_boa_apo_fam_syncom + plot_annotation(title = "Fig 1") & theme(text = element_text(family = "NimbusMon")) 
 ```
 
-```{r}
-heat_boa_apo_fam_syncom & theme(legend.position = "none") 
-```
-
 ### Plot without legend
 
 ```{r}
-heat_boa_apo_fam_syncom & theme(legend.position = "none") 
+heat_boa_apo_fam_syncom +
+    geom_tippoint(aes(color =  Family,
+                      shape = Class),
+                  size = 6) &
+  theme(legend.position = "none") 
 ```
 
 ## Legend only
@@ -1480,7 +1499,7 @@ Flavobacteriaceae_tree_boa_apo <- gheatmap(Flavobacteriaceae_tree_boa,
 Flavobacteriaceae_tree_boa_apo
 ```
 
-# Family Trees
+
 
 ```{r}
 (Rhizobia_tree_boa_apo + Firmi_tree_boa_apo +
@@ -1496,17 +1515,18 @@ Flavobacteriaceae_tree_boa_apo
   guides(fill =FALSE)
 ```
 
+# Order Trees
 
-## Less stringent subsets
+## Rhizobiales
 
 ```{r}
 Rhizobia <- AUC_emmeans %>% filter(Order == "Rhizobiales") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
 ```
 
 ```{r}
-not_rhizobium <- Rhizobia$id %>% 
+not_rhizobia <- Rhizobia$id %>% 
   {setdiff(tree_data$id %>% unique,.)}
-Rhizobia_tree <- drop.tip(tree_structure, not_rhizobium)
+Rhizobia_tree <- drop.tip(tree_structure, not_rhizobia)
 ```
 
 ```{r}
@@ -1565,15 +1585,172 @@ Rhizobia_tree_boa_apo <- gheatmap(Rhizobia_tree_boa,
 Rhizobia_tree_boa_apo
 ```
 
+## Xanthomodales
+
+```{r}
+Xanthos <- AUC_emmeans %>%
+  filter(Order == "Xanthomonadales") %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+```
+
+```{r}
+not_xanthos <- Xanthos$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Xanthos_tree <- drop.tip(tree_structure, not_xanthos)
+```
+
+```{r}
+Xanthos_tree <- Xanthos_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Xanthos_tree <- Xanthos_tree + 
+  layout_dendrogram() + 
+  ggtitle("Xanthomodales") +
+  geom_tippoint(aes(color = Genus), size = 2)
+```
+
+
+```{r}
+Xanthos_tree_boa <- gheatmap(Xanthos_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) +
+  ggtitle("Xanthomodales, BOA") 
+
+
+Xanthos_tree_boa
+```
+
+```{r}
+Xanthos_tree_boa_apo <- gheatmap(Xanthos_tree_boa, 
+         tree_data_apo,
+         offset=1.8,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Xanthomodales") +
+  theme(legend.position = "left")
+Xanthos_tree_boa_apo
+```
+## Bacillales
+
+```{r}
+Bacillales <- AUC_emmeans %>%
+  filter(Order == "Bacillales") %>%
+  dplyr::select(Genus, Strain) %>%
+  mutate(id = paste(Genus, Strain, sep = "_")) %>%
+  unique
+```
+
+```{r}
+not_bacilla <- Bacillales$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+Bacillales_tree <- drop.tip(tree_structure, not_bacilla)
+```
+
+```{r}
+Bacillales_tree <- Bacillales_tree %>%
+  ggtree(branch.length = "none",
+         layout = "rectangular",
+         open.angle = 10) %<+% tree_plot_data
+Bacillales_tree <- Bacillales_tree + 
+  layout_dendrogram() + 
+  ggtitle("Xanthomodales") +
+  geom_tippoint(aes(color = Genus), size = 2)
+```
+
+
+```{r}
+Bacillales_tree_boa <- gheatmap(Bacillales_tree, 
+         tree_data_boa,
+         offset=0.2,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  theme(text = element_text(family = "NimbusMon")) 
+
+```
+
+```{r}
+Bacillales_tree_boa_apo <- gheatmap(Bacillales_tree_boa, 
+         tree_data_apo,
+         offset=1.8,
+         width=0.2,
+         colnames_angle = 0,
+         colnames = FALSE,
+         colnames_position = "bottom",
+         hjust = 1,
+         font.size = 3,
+         legend_title = "Rel. growth") + 
+  scale_fill_viridis_c(na.value = "white",
+                       direction = -1,
+                       limits = c(0, 1.5),
+                       oob = scales::squish,
+                       name = "Rel. growth") +
+  ggtitle("Bacillales") +
+  theme(legend.position = "left")
+Bacillales_tree
+```
+
+
 # Phylosig
 
+```{r}
+tree_data_physig <- tree_data %>%
+             filter(Chem == "APO", Conc == 50) %>% 
+             dplyr::select(id, estimate, std.error) %>%
+             distinct %>% 
+             as.data.frame() %>% 
+             separate("id", c("Genus","Strain"), sep = "_", remove = F) %>% 
+             column_to_rownames("id")
+all_se <- tree_data_physig$std.error
+names(all_se) <- rownames(tree_data_physig)
+```
+
+
 ## All
+
+
+
 
 ```{r}
 apo_50um_sorted <- motmot::sortTraitData(phy = fit_GTR$tree %>%
                                    multi2di() ,
-                                 y = tree_data_apo,
-                                 data.name = "50µM APO",
+                                 y = tree_data_physig,
+                                 data.name = "estimate",
                                  log.trait = FALSE,
                                  pass.ultrametric = TRUE)
 ```
@@ -1582,12 +1759,14 @@ apo_50um_sorted <- motmot::sortTraitData(phy = fit_GTR$tree %>%
 phytools::phylosig(tree = apo_50um_sorted$phy,
             x = apo_50um_sorted$trait,
             method = "K",
+            se = all_se,
             test = TRUE)
 ```
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted$phy,
             x = apo_50um_sorted$trait,
             method = "lambda",
+            se = all_se,
             test = TRUE)
 
 ```
@@ -1629,11 +1808,8 @@ write_rds(fit_GTR, "files_publication/Grampos_Strain_tree_16S_gyrB_rhoB_recA_dna
 ```
 
 ```{r}
-tree_data_grampos <- tree_plot_data %>% filter(Strain %in% grampos_strains)
-tree_data_grampos_apo <- tree_data_grampos %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
+tree_data_grampos <- tree_data_physig %>% filter(Strain %in% grampos_strains)
+
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_grampos <- read_rds("files_publication/Grampos_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
@@ -1651,8 +1827,8 @@ fit_GTR_grampos$tree$tip.label %<>%
 ```{r}
 apo_50um_sorted_grampos <- motmot::sortTraitData(phy = fit_GTR_grampos$tree %>%
                                                      multi2di() ,
-                                                   y = tree_data_grampos_apo,
-                                                   data.name = "50µM APO",
+                                                   y = tree_data_physig,
+                                                   data.name = "estimate",
                                                    log.trait = FALSE,
                                                    pass.ultrametric = TRUE)
 ```
@@ -1662,12 +1838,14 @@ apo_50um_sorted_grampos <- motmot::sortTraitData(phy = fit_GTR_grampos$tree %>%
 phytools::phylosig(tree = apo_50um_sorted_grampos$phy,
             x = apo_50um_sorted_grampos$trait,
             method = "K",
+            se = all_se,
             test = TRUE)
 ```
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_grampos$phy,
             x = apo_50um_sorted_grampos$trait,
             method = "lambda",
+            se = all_se,
             test = TRUE)
 ```
 ### Tree
@@ -1785,11 +1963,6 @@ write_rds(fit_GTR, "files_publication/Actinomycetia_Strain_tree_16S_gyrB_rhoB_re
 ```
 
 ```{r}
-tree_data_actinomyc <- tree_plot_data %>% filter(Strain %in% actinomycetia_strains)
-tree_data_actinomyc_apo <- tree_data_actinomyc %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_actinomyc <- read_rds("files_publication/Actinomycetia_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
@@ -1807,8 +1980,8 @@ fit_GTR_actinomyc$tree$tip.label %<>%
 ```{r}
 apo_50um_sorted_actinomyc <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree %>%
                                                      multi2di() ,
-                                                   y = tree_data_actinomyc_apo,
-                                                   data.name = "50µM APO",
+                                                   y = tree_data_physig,
+                                                   data.name = "estimate",
                                                    log.trait = FALSE,
                                                    pass.ultrametric = TRUE)
 ```
@@ -1817,15 +1990,101 @@ apo_50um_sorted_actinomyc <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree 
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_actinomyc$phy,
             x = apo_50um_sorted_actinomyc$trait,
-            method = "K",
-            test = TRUE)
-```
-```{r}
-phytools::phylosig(tree = apo_50um_sorted_actinomyc$phy,
-            x = apo_50um_sorted_actinomyc$trait,
             method = "lambda",
+            se = all_se,
             test = TRUE)
 ```
+
+#### Actinomycetales
+
+```{r}
+Actinomycetales <- AUC_emmeans %>% filter(Order == "Actinomycetales") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+tree_data_actinomycetales <- tree_data_physig %>% filter(Strain %in% Actinomycetales$Strain)
+
+apo_50um_sorted_actinomycetales <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree %>% multi2di() ,
+                                              y = tree_data_actinomycetales,
+                                              data.name = "estimate", 
+                                              log.trait = FALSE,
+                                              pass.ultrametric = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_actinomycetales$phy,
+            x = apo_50um_sorted_actinomycetales$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+```
+
+#### Intrasporangiaceae
+
+```{r}
+Intraspo <- AUC_emmeans %>% filter(Family == "Intrasporangiaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+tree_data_intraspo <- tree_data_physig %>% filter(Strain %in% Intraspo$Strain)
+
+apo_50um_sorted_intraspo <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree %>% multi2di() ,
+                                              y = tree_data_intraspo,
+                                              data.name = "estimate", 
+                                              log.trait = FALSE,
+                                              pass.ultrametric = TRUE)
+
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_intraspo$phy,
+            x = apo_50um_sorted_intraspo$trait,
+            method = "lambda",
+            #se = all_se,
+            test = TRUE)
+```
+#### Nocardioidaceae
+
+```{r}
+Nocardioid <- AUC_emmeans %>% filter(Family == "Nocardioidaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+tree_data_nocardioid <- tree_data_physig %>% filter(Strain %in% Nocardioid$Strain)
+
+apo_50um_sorted_nocardioid <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree %>% multi2di() ,
+                                              y = tree_data_nocardioid,
+                                              data.name = "estimate", 
+                                              log.trait = FALSE,
+                                              pass.ultrametric = TRUE)
+
+```
+
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_nocardioid$phy,
+            x = apo_50um_sorted_nocardioid$trait,
+            method = "lambda",
+            #se = all_se,
+            test = TRUE)
+```
+#### Microbacteriaceae
+
+```{r}
+Microbacteria <- AUC_emmeans %>% filter(Family == "Microbacteriaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+not_Microbacteria <- Microbacteria$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+
+apo_50um_sorted_microbacteriacae <- motmot::sortTraitData(phy = fit_GTR_actinomyc$tree %>% 
+                                        drop.tip(not_Microbacteria) %>%
+                                         multi2di(),
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_microbacteriacae$phy,
+            x = apo_50um_sorted_microbacteriacae$trait,
+            method = "lambda",
+            #se = all_se,
+            test = TRUE)
+```
+
+
 ### Tree
 
 ```{r}
@@ -1939,12 +2198,7 @@ write_rds(fit_GTR, "files_publication/Bacilli_Strain_tree_16S_gyrB_rhoB_recA_dna
 ```
 
 ```{r}
-tree_data_baci <- tree_plot_data %>% filter(Strain %in% baci_strains)
-tree_data_baci_apo <- tree_data_baci %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
-### read tree
+## read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_baci <- read_rds("files_publication/Bacilli_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
 fit_GTR_baci$tree$tip.label %<>%
@@ -1961,8 +2215,8 @@ fit_GTR_baci$tree$tip.label %<>%
 ```{r}
 apo_50um_sorted_baci <- motmot::sortTraitData(phy = fit_GTR_baci$tree %>%
                                                      multi2di() ,
-                                                   y = tree_data_baci_apo,
-                                                   data.name = "50µM APO",
+                                                   y = tree_data_physig,
+                                                   data.name = "estimate",
                                                    log.trait = FALSE,
                                                    pass.ultrametric = TRUE)
 ```
@@ -1971,15 +2225,37 @@ apo_50um_sorted_baci <- motmot::sortTraitData(phy = fit_GTR_baci$tree %>%
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_baci$phy,
             x = apo_50um_sorted_baci$trait,
+            se = all_se,
             method = "K",
             test = TRUE)
 ```
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_baci$phy,
             x = apo_50um_sorted_baci$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
 ```
+#### Bacillales
+
+```{r}
+apo_50um_sorted_bacila <- motmot::sortTraitData(phy = fit_GTR_grampos$tree %>% 
+                                        drop.tip(not_bacilla) %>%
+                                         multi2di(),
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_bacila$phy,
+            x = apo_50um_sorted_bacila$trait,
+            se = all_se,
+            method = "lambda",
+            test = TRUE)
+```
+
 ### Tree
 
 ```{r}
@@ -2094,11 +2370,6 @@ write_rds(fit_GTR, "files_publication/Proteobacteria_Strain_tree_16S_gyrB_rhoB_r
 ```
 
 ```{r}
-tree_data_proteo <- tree_plot_data %>% filter(Strain %in% proteobacteria_strains)
-tree_data_proteo_apo <- tree_data_proteo %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_proteo <- read_rds("files_publication/Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
@@ -2117,8 +2388,8 @@ fit_GTR_proteo$tree$tip.label %<>%
 ```{r}
 apo_50um_sorted_proteo <- motmot::sortTraitData(phy = fit_GTR_proteo$tree %>%
                                    multi2di() ,
-                                 y = tree_data_proteo_apo,
-                                 data.name = "50µM APO",
+                                 y = tree_data_physig,
+                                 data.name = "estimate",
                                  log.trait = FALSE,
                                  pass.ultrametric = TRUE)
 ```
@@ -2127,12 +2398,14 @@ apo_50um_sorted_proteo <- motmot::sortTraitData(phy = fit_GTR_proteo$tree %>%
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
             x = apo_50um_sorted_proteo$trait,
+            se = all_se,
             method = "K",
             test = TRUE)
 ```
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
             x = apo_50um_sorted_proteo$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
 ```
@@ -2295,14 +2568,11 @@ fit_GTR <- update(fit, k=4, inv=0.2)
 fit_GTR <- optim.pml(fit_GTR, model="GTR", optInv=TRUE, optGamma=TRUE,
  rearrangement = "stochastic", control = pml.control(trace = 0))
 write_rds(fit_GTR, "files_publication/Beta_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
+
+seqs_aligned <- AlignSeqs(gproteo_concat_seqs, anchor=NA)
 ```
 
 ```{r}
-tree_data_bproteo <- tree_plot_data %>% filter(Strain %in% bproteobacteria_strains)
-tree_data_bproteo_apo <- tree_data_bproteo %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_bproteo <- read_rds("files_publication/Beta_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
@@ -2319,26 +2589,60 @@ fit_GTR_bproteo$tree$tip.label %<>%
 
 ```{r}
 apo_50um_sorted_beta <- motmot::sortTraitData(phy = fit_GTR_bproteo$tree %>% multi2di() ,
-                                              y = tree_data_bproteo_apo,
-                                              data.name = "50µM APO", 
+                                              y = tree_data_physig,
+                                              data.name = "estimate", 
                                               log.trait = FALSE,
                                               pass.ultrametric = TRUE)
-phylosignal(x = apo_50um_sorted_beta$trait,phy = apo_50um_sorted_beta$phy)
 ```
+
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_beta$phy,
             x = apo_50um_sorted_beta$trait,
+            se = all_se,
             method = "K",
             test = TRUE)
 ```
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_beta$phy,
             x = apo_50um_sorted_beta$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
 ```
+#### Comamonadaceae
 
-### Tree
+```{r}
+apo_50um_sorted_comamo <- motmot::sortTraitData(phy = fit_GTR_bproteo$tree %>% 
+                                                  drop.tip(not_comamo)  %>% 
+                                                  multi2di() ,
+                                              y = tree_data_physig,
+                                              data.name = "estimate", 
+                                              log.trait = FALSE,
+                                              pass.ultrametric = TRUE)
+
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_comamo$phy,
+            x = apo_50um_sorted_comamo$trait,
+            method = "K",
+            se = all_se,
+            test = TRUE)
+```
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_comamo$phy,
+            x = apo_50um_sorted_comamo$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+```
+```{r}
+tree_data_comamo %>% plot_tree
+```
+
+
+
+#### Tree
 
 ```{r}
 tree_structure <- fit_GTR_bproteo$tree %>% as.phylo
@@ -2414,6 +2718,26 @@ bproteo_tree <- subset_tree_boa_apo
 bproteo_tree
 ```
 
+### Burkholderiales
+
+```{r}
+apo_50uM_burkholderiales <- motmot::sortTraitData(phy = fit_GTR_bproteo$tree %>% multi2di() ,
+                                               y = tree_data_physig %>% 
+                        filter(Strain %in% (AUC_emmeans %>%
+                                              filter(Order == "Burkholderiales") %$% 
+                                              Strain %>%
+                                              unique)), 
+                                               data.name = "estimate",
+                                               log.trait = F)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50uM_burkholderiales$phy,
+            x = apo_50uM_burkholderiales$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+```
 
 ## Alphaproteo
 
@@ -2455,11 +2779,6 @@ write_rds(fit_GTR, "files_publication/Alpha_Proteobacteria_Strain_tree_16S_gyrB_
 ```
 
 ```{r}
-tree_data_aproteo <- tree_plot_data %>% filter(Strain %in% aproteobacteria_strains)
-tree_data_aproteo_apo <- tree_data_aproteo %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_aproteo <- read_rds("files_publication/Alpha_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
@@ -2476,11 +2795,9 @@ fit_GTR_aproteo$tree$tip.label %<>%
 
 ```{r}
 apo_50um_sorted_alpha <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
-                                        # # drop.tip(c("Ensifer_Root258", 
-                                        #            "Ensifer_Root74",
-                                        #            "Phenylobacterium_Root77",
-                                        #            "Sphingomonas_Root720")) %>%
-                                         multi2di(), y = tree_data_aproteo_apo, data.name = "50µM APO",
+                                         multi2di(),
+                                         y = tree_data_physig, 
+                                         data.name = "estimate",
                                        log.trait = FALSE,
                                        pass.ultrametric = TRUE)
 ```
@@ -2488,11 +2805,13 @@ apo_50um_sorted_alpha <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>%
 phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
             x = apo_50um_sorted_alpha$trait,
             method = "K",
+            se = all_se,
             test = TRUE)
 ```
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
             x = apo_50um_sorted_alpha$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
 ```
@@ -2576,12 +2895,46 @@ aproteo_tree
 ```{r}
 Rhizobia <- AUC_emmeans %>% filter(Order == "Rhizobiales") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
 
+Rhizobiaceae <- AUC_emmeans %>% filter(Family == "Rhizobiaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+Rhizobium <- AUC_emmeans %>% filter(Genus == "Rhizobium") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+Ensifer <- AUC_emmeans %>% filter(Genus == "Ensifer") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+
+
 not_rhizobia <- Rhizobia$id %>% 
   {setdiff(tree_data$id %>% unique,.)}
+not_rhizobiaceae <- Rhizobiaceae$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+not_rhizobium <- Rhizobium$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+not_ensifer <- Ensifer$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+
 apo_50um_sorted_rhizobiales <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
                                         drop.tip(not_rhizobia) %>%
                                          multi2di(),
-                                        y = tree_data_aproteo_apo, data.name = "50µM APO",
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+apo_50um_sorted_rhizobium <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
+                                        drop.tip(not_rhizobium) %>%
+                                         multi2di(),
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+apo_50um_sorted_rhizobiaceae <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
+                                        drop.tip(not_rhizobiaceae) %>%
+                                         multi2di(),
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+apo_50um_sorted_ensifer <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
+                                        drop.tip(not_rhizobium) %>%
+                                         multi2di(),
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
                                        log.trait = FALSE,
                                        pass.ultrametric = TRUE)
 ```
@@ -2590,16 +2943,66 @@ apo_50um_sorted_rhizobiales <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree 
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_rhizobiales$phy,
             x = apo_50um_sorted_rhizobiales$trait,
-            method = "K",
+            method = "lambda",
+            se = all_se,
             test = TRUE)
 ```
+### Rhizobiaceae
+
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted_rhizobiales$phy,
-            x = apo_50um_sorted_rhizobiales$trait,
+phytools::phylosig(tree = apo_50um_sorted_rhizobiaceae$phy,
+            x = apo_50um_sorted_rhizobiaceae$trait,
             method = "lambda",
+            se = all_se,
+            test = TRUE)
+```
+#### Rhizobium
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_rhizobium$phy,
+            x = apo_50um_sorted_rhizobium$trait,
+            method = "lambda",
+            se = all_se,
             test = TRUE)
 ```
 
+#### Ensifer
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_ensifer$phy,
+            x = apo_50um_sorted_ensifer$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+```
+
+### Phyllobacteriaceae
+
+
+```{r}
+Phyllobacteriaceae <- AUC_emmeans %>% filter(Family == "Phyllobacteriaceae") %>% dplyr::select(Genus, Strain) %>% mutate(id = paste(Genus, Strain, sep = "_")) %>% unique
+
+
+
+not_phyllo <- Phyllobacteriaceae$id %>% 
+  {setdiff(tree_data$id %>% unique,.)}
+
+apo_50um_sorted_phyllo <- motmot::sortTraitData(phy = fit_GTR_aproteo$tree %>% 
+                                        drop.tip(not_phyllo) %>%
+                                         multi2di(),
+                                        y = tree_data_physig,
+                                        data.name = "estimate",
+                                       log.trait = FALSE,
+                                       pass.ultrametric = TRUE)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_phyllo$phy,
+            x = apo_50um_sorted_phyllo$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+```
 
 ## Gammaproteo
 
@@ -2641,11 +3044,6 @@ write_rds(fit_GTR, "files_publication/Gamma_Proteobacteria_Strain_tree_16S_gyrB_
 ```
 
 ```{r}
-tree_data_gproteo <- tree_plot_data %>% filter(Strain %in% gproteobacteria_strains)
-tree_data_gproteo_apo <- tree_data_gproteo %>% 
-           dplyr::select("id","APO1","APO5","APO10","APO50") %>% 
-           column_to_rownames("id") %>% 
-           set_colnames(c("1µM APO", "5µM APO", "10µM APO", "50µM APO"))
 ### read tree
 #fit_GTR <- read_rds("files_publication/Strain_tree.rds")
 fit_GTR_gproteo <- read_rds("files_publication/Gamma_Proteobacteria_Strain_tree_16S_gyrB_rhoB_recA_dnaJ_atpD_thrC.rds")
@@ -2661,21 +3059,41 @@ fit_GTR_gproteo$tree$tip.label %<>%
 ```
 
 ```{r}
-apo_50um_sorted_gamma <- motmot::sortTraitData(phy = fit_GTR_gproteo$tree %>% multi2di() , y = tree_data_gproteo_apo, data.name = "50µM APO")
-phylosignal(phy = apo_50um_sorted_gamma$phy,x = apo_50um_sorted_gamma$trait)
+apo_50um_sorted_gamma <- motmot::sortTraitData(phy = fit_GTR_gproteo$tree %>% multi2di() ,
+                                               y = tree_data_physig, 
+                                               data.name = "estimate",
+                                               log.trait = F)
 ```
 
 ```{r}
 phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
             x = apo_50um_sorted_gamma$trait,
-            method = "K",
-            test = TRUE)
-```
-```{r}
-phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
-            x = apo_50um_sorted_gamma$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
+```
+#### Xanthomonadales
+
+```{r}
+apo_50um_sorted_xantho <- motmot::sortTraitData(phy = fit_GTR_gproteo$tree %>%
+                                                  drop.tip(not_xanthos) %>%
+                                                  multi2di() ,
+                                               y = tree_data_physig, 
+                                               data.name = "estimate",
+                                               log.trait = F)
+```
+
+```{r}
+phytools::phylosig(tree = apo_50um_sorted_xantho$phy,
+            x = apo_50um_sorted_xantho$trait,
+            se = all_se,
+            method = "lambda",
+            test = TRUE) 
+```
+```{r}
+Xanthos_tree_boa_apo +
+  ggtitle("Xanthomonadales",
+          sub = expression(paste(lambda, " = 1, p < 0.001" )))
 ```
 
 ### Tree
@@ -2760,89 +3178,288 @@ gproteo_tree
 ## All
 
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted$phy,
-            x = apo_50um_sorted$trait,
-            method = "K",
-            test = TRUE)
-```
-```{r}
-phytools::phylosig(tree = apo_50um_sorted$phy,
+lambda_all <- phytools::phylosig(tree = apo_50um_sorted$phy,
             x = apo_50um_sorted$trait,
             method = "lambda",
+            se = all_se,
             test = TRUE)
+lambda_all
 ```
 
 ## Proteo
 
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
-            x = apo_50um_sorted_proteo$trait,
-            method = "K",
-            test = TRUE)
-```
-```{r}
-phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
+lambda_proteo <- phytools::phylosig(tree = apo_50um_sorted_proteo$phy,
             x = apo_50um_sorted_proteo$trait,
             method = "lambda",
+            se = all_se,
             test = TRUE)
+lambda_proteo
 ```
 
 ### Alpha
 
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
+lambda_alpha <- phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
             x = apo_50um_sorted_alpha$trait,
-            method = "K",
-            test = TRUE)
-```
-
-```{r}
-phytools::phylosig(tree = apo_50um_sorted_alpha$phy,
-            x = apo_50um_sorted_alpha$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
+lambda_alpha
 ```
+#### Rhizobiales
+
+```{r}
+lambda_rhizo <- phytools::phylosig(tree = apo_50um_sorted_rhizobiales$phy,
+            x = apo_50um_sorted_rhizobiales$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_rhizo
+```
+
+##### Rhizobiaceae
+
+```{r}
+lambda_rhizobiaceae <- phytools::phylosig(tree = apo_50um_sorted_rhizobiaceae$phy,
+            x = apo_50um_sorted_rhizobiaceae$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_rhizobiaceae
+```
+##### Phyllobacteriaceae
+
+```{r}
+lambda_phyllo <- phytools::phylosig(tree = apo_50um_sorted_phyllo$phy,
+            x = apo_50um_sorted_phyllo$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_phyllo
+```
+
+
+
 ### beta
 
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted_beta$phy,
+lambda_beta <- phytools::phylosig(tree = apo_50um_sorted_beta$phy,
             x = apo_50um_sorted_beta$trait,
-            method = "K",
-            test = TRUE)
-```
-
-```{r}
-phytools::phylosig(tree = apo_50um_sorted_beta$phy,
-            x = apo_50um_sorted_beta$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
+lambda_beta
+```
+#### Comamonadaceae
+
+```{r}
+lambda_comamo <- phytools::phylosig(tree = apo_50um_sorted_comamo$phy,
+            x = apo_50um_sorted_comamo$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_comamo
 ```
 
+#### Burkholderiales
+
+```{r}
+lambda_burk <- phytools::phylosig(tree = apo_50uM_burkholderiales$phy,
+            x = apo_50uM_burkholderiales$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_burk
+```
 ### gamma
 
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
+lambda_gamma <- phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
             x = apo_50um_sorted_gamma$trait,
-            method = "K",
+            se = all_se,
+            method = "lambda",
             test = TRUE)
+lambda_gamma
 ```
+#### Xanthomonadales
 
 ```{r}
-phytools::phylosig(tree = apo_50um_sorted_gamma$phy,
-            x = apo_50um_sorted_gamma$trait,
+lambda_xantho <- phytools::phylosig(tree = apo_50um_sorted_xantho$phy,
+            x = apo_50um_sorted_xantho$trait,
+            se = all_se,
+            method = "lambda",
+            test = TRUE) 
+lambda_xantho
+```
+```{r}
+lambda_xanthomonadaceae <- phytools::phylosig(tree = apo_50um_sorted_xantho$phy,
+            x = apo_50um_sorted_xantho$trait,
+            se = all_se,
+            method = "lambda",
+            test = TRUE) 
+lambda_xantho
+```
+
+
+
+## Gram pos
+
+```{r}
+lambda_gpos <- phytools::phylosig(tree = apo_50um_sorted_grampos$phy,
+            x = apo_50um_sorted_grampos$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_gpos
+```
+
+### Actinomycetia
+
+```{r}
+lambda_actinomy <- phytools::phylosig(tree = apo_50um_sorted_actinomyc$phy,
+            x = apo_50um_sorted_actinomyc$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_actinomy
+```
+#### Actinomycetales 
+
+```{r}
+lambda_actinomycetales <- phytools::phylosig(tree = apo_50um_sorted_actinomycetales$phy,
+            x = apo_50um_sorted_actinomycetales$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_actinomycetales
+```
+
+
+#### Intrasporangiaceae
+
+```{r}
+lambda_intraspo <- phytools::phylosig(tree = apo_50um_sorted_intraspo$phy,
+            x = apo_50um_sorted_intraspo$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_intraspo
+```
+
+
+#### Nocardioidaceae
+
+```{r}
+lambda_nocardioid <- phytools::phylosig(tree = apo_50um_sorted_nocardioid$phy,
+            x = apo_50um_sorted_nocardioid$trait,
+            method = "lambda",
+            #se = all_se,
+            test = TRUE)
+lambda_nocardioid
+```
+
+#### Microbacteriaceae
+
+```{r}
+lambda_microbact <- phytools::phylosig(tree = apo_50um_sorted_microbacteriacae$phy,
+            x = apo_50um_sorted_microbacteriacae$trait,
+            method = "lambda",
+            se = all_se,
+            test = TRUE)
+lambda_microbact
+```
+
+
+### Bacilli
+
+```{r}
+lambda_baci <- phytools::phylosig(tree = apo_50um_sorted_baci$phy,
+            x = apo_50um_sorted_baci$trait,
+            se = all_se,
             method = "lambda",
             test = TRUE)
 ```
 
-
-# Tmp stuff
+### Tab S2
 
 ```{r}
-polytomous <- c(which(rownames(tree_data_proteo_apo) == "Ensifer_Root258"),
-                which(row.names(tree_data_proteo_apo) == "Ensifer_Root74"),
-                which(row.names(tree_data_proteo_apo) == "Phenylobacterium_Root77"),
-                which(row.names(tree_data_proteo_apo) == "Sphingomonas_Root720"))
+lambda_tab <- rbind(c(lambda_all$lambda %>% round(3), lambda_all$P %>% round(4),
+                      "All", "All", "All", "All","All"),
+                    c(lambda_gpos$lambda %>% round(3), lambda_gpos$P %>% round(4),
+                      "Gram Positive","All" ,"All", "All", "All"),
+                    c(lambda_actinomy$lambda %>% round(3), lambda_actinomy$P %>% round(4),
+                      "Gram Positive", "Actinobacteria", "Actinomycetia", "All", "All"),
+                    c(lambda_actinomycetales$lambda %>% round(3), lambda_actinomycetales$P %>% round(4), 
+                      "Gram Positive", "Actinobacteria", "Actinomycetia", "Actinomycetales", "All"),
+                    c(lambda_nocardioid$lambda %>% round(3), lambda_nocardioid$P %>% round(4), 
+                      "Gram Positive", "Actinobacteria", "Actinomycetia", "Actinomycetales", "Nocardioidaceae"),
+                    c(lambda_intraspo$lambda %>% round(3), lambda_intraspo$P %>% round(4), 
+                      "Gram Positive", "Actinobacteria", "Actinomycetia", "Actinomycetales", "Intrasporangiaceae"),
+                    c(lambda_microbact$lambda %>% round(3), lambda_microbact$P %>% round(4), 
+                      "Gram Positive", "Actinobacteria", "Actinomycetia", "Actinomycetales", "Microbacteriaceae"),
+                    c(lambda_baci$lambda %>% round(3), lambda_baci$P %>% round(4), 
+                      "Gram Positive", "Firmicutes", "Bacilli", "All", "All"),
+                    c(lambda_proteo$lambda %>% round(3), lambda_proteo$P %>% round(4),
+                      "Gram Negative", "Proteobacteria", "All", "All", "All"),
+                    c(lambda_alpha$lambda %>% round(3), lambda_alpha$P %>% round(4), 
+                      "Gram Negative", "Proteobacteria", "Alpha", "All", "All"),
+                    c(lambda_rhizo$lambda %>% round(3), lambda_rhizo$P %>% round(4), 
+                      "Gram Negative", "Proteobacteria", "Alpha", "Rhizobiales", "All"),
+                    c(lambda_rhizobiaceae$lambda %>% round(3), lambda_rhizobiaceae$P %>% round(4), 
+                      "Gram Negative", "Proteobacteria", "Alpha", "Rhizobiales", "Rhizobiacaea"),
+                    c(lambda_phyllo$lambda %>% round(3), lambda_phyllo$P %>% round(4),
+                      "Gram Negative", "Proteobacteria", "Alpha", "Rhizobiales", "Phyllobacteriacae"),
+                    c(lambda_beta$lambda %>% round(3), lambda_beta$P %>% round(4),
+                      "Gram Negative", "Proteobacteria", "Beta", "All", "All"),
+                    c(lambda_burk$lambda %>% round(3), lambda_burk$P %>% round(4),
+                      "Gram Negative", "Proteobacteria", "Beta", "Burkholderiales", "All"),
+                    c(lambda_comamo$lambda %>% round(3), lambda_comamo$P %>% round(4), 
+                      "Gram Negative", "Proteobacteria", "Beta", "Burkholderiales", "Comamonadaceae"),
+                    c(lambda_gamma$lambda %>% round(3), lambda_gamma$P %>% round(4), 
+                      "Gram Negative", "Proteobacteria", "Gamma", "All", "All"),
+                    c(lambda_xantho$lambda %>% round(3), lambda_xantho$P %>% round(4), 
+                      "Gram Negative", "Proteobacteria", "Gamma", "Xanthomonadales", "All")) %>% 
+  set_colnames(c("lambda","p","Gram", "Phylum","Class","Order","Family") ) %>% 
+  as.data.frame() %>% 
+  dplyr::arrange(Gram, Phylum, Class, Order, Family) %>% 
+  dplyr::select(Gram, Phylum, Class, Order, Family, lambda, p.value = p) %>% 
+  mutate(p.value = as.numeric(p.value))
 ```
+
+
+```{r}
+lambda_tab %>% 
+  group_by(Gram, Phylum) %>% 
+  gt::gt() %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.05),
+    fn = function(x) paste(x, "*")
+  ) %>% 
+    gt::text_transform(
+    locations = gt::cells_body(
+      columns = "p.value",
+      rows = p.value < 0.01),
+    fn = function(x) paste(x, "*")
+  ) %>% gt::tab_style(
+    style = list(
+      gt::cell_text(align = "left")
+      ),
+    locations = gt::cells_body(columns = "p.value")
+  ) %>% 
+  gt::tab_style(
+    style = list(
+      gt::cell_text(weight = "bold")
+      ),
+    locations = gt::cells_body(
+      columns = c("Class","Order","Family","lambda","p.value"),
+      rows = p.value < 0.05 )
+  ) %>% 
+  write_rds("files_publication/TabS2_lambda.rds")
+```
+
 
 # SessionInfo
 

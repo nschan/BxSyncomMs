@@ -193,4 +193,85 @@ fix_node_placement_no_time <- function(network = NULL,
 }
 
 
+## Only treatment version
+
+fix_node_placement_treat <- function(network = NULL,
+                               Treatments = list("APO", "BOA")) {
+  
+  # Extract edges and nodes  
+  placed_edges <- network %>% filter(!is.na(Treatment))
+  placed_nodes <- network %>% filter(is.na(Treatment))
+  
+  # The below works by comparing every node (x and y mapping) with the ends of the edges.
+  # This requires
+  placed_nodes <- bind_rows(
+    bind_rows(lapply(Treatments, function(treat){
+            placed_nodes %>% 
+              mutate( Treatment = case_when(x %in% c(placed_edges %>% 
+                                                      filter(Treatment == treat)%$%
+                                                      x,
+                                                    placed_edges %>% 
+                                                      filter(Treatment == treat) %$%
+                                                      xend) ~ treat,
+                                           TRUE ~ Treatment)) %>% 
+              filter(!is.na(Treatment))})) ,
+    bind_rows(
+        lapply(Treatments, function(treat){
+            placed_nodes %>% 
+              mutate(Treatment = case_when(y %in% c(placed_edges %>% 
+                                                      filter(Treatment == treat) %$%
+                                                      y,
+                                                    placed_edges %>% 
+                                                      filter(Treatment == treat)  %$%
+                                                      yend) ~ treat,
+                                           TRUE ~ Treatment)) %>% 
+              filter(!is.na(Treatment))}))) %>% 
+    distinct()
+  
+  
+  bind_rows(placed_nodes,
+            placed_edges) %>% 
+    distinct()
+}
+
+
+fix_node_placement_syncom <- function(network = NULL,
+                                       Syncoms = list("Tolerant", "Random")) {
+  
+  # Extract edges and nodes  
+  placed_edges <- network %>% filter(!is.na(Syncom))
+  placed_nodes <- network %>% filter(is.na(Syncom))
+  
+  # The below works by comparing every node (x and y mapping) with the ends of the edges.
+  # This requires
+  placed_nodes <- bind_rows(
+    bind_rows(
+      lapply(Syncoms, function(syncom){
+          placed_nodes %>% 
+            mutate(Syncom = case_when(x %in% c(placed_edges %>% 
+                                                 filter(Syncom == syncom) %$%
+                                                 x,
+                                               placed_edges %>% 
+                                                 filter(Syncom == syncom) %$%
+                                                 xend) ~ syncom,
+                                      TRUE ~ Syncom)) %>% 
+            filter(!is.na(Syncom))})),
+    bind_rows(
+      lapply(Syncoms, function(syncom){
+          placed_nodes %>% 
+            mutate(Syncom = case_when(y %in% c(placed_edges %>% 
+                                                 filter(Syncom == syncom) %$%
+                                                 y,
+                                               placed_edges %>% 
+                                                 filter(Syncom == syncom) %$%
+                                                 yend) ~ syncom,
+                                      TRUE ~ Syncom)) %>% 
+            filter(!is.na(Syncom))}))) %>% 
+    distinct()
+    
+  bind_rows(placed_nodes,
+            placed_edges) %>% 
+    distinct()
+}
+
 
