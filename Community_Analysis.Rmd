@@ -889,21 +889,25 @@ observed_sensitive_plot <- observed_sensitive %>%
         axis.ticks.x = element_blank())
 ```
 
-#### Fig S1
+#### Fig S2
 
 
 ```{r}
-FigS1 <- ((observed_random_plot | observed_tolerant_plot ) / 
+FigS2 <- ((observed_random_plot | observed_tolerant_plot ) / 
    (observed_mixed_plot |observed_sensitive_plot ) ) +
-  plot_annotation(title = "Figure S1: Number of observed Genera", tag_levels = "A") +
+  plot_annotation(tag_levels = "A") +
   plot_layout(guides = "collect") &
-  theme(axis.title.y = element_blank(),
-        legend.position = "bottom",
+  theme(legend.position = "bottom",
         text = element_text(family = "NimbusMon")) 
 ```
 
 ```{r}
-FigS1
+FigS2
+```
+```{r}
+png("Supplemental_Figures/Figure_S2.png",width = 720, height = 560)
+FigS2
+dev.off()
 ```
 
 
@@ -1288,22 +1292,26 @@ shannon_sensitive_plot <- shannon_sensitive %>%
 
 Phyloseq raises a warning regarding lack of singletons. Shannon diversity does rely on low-abundance species, since these communities are in-vitro, singletons are not really expected.
 
-#### Fig S2
+#### Fig S3
 
 ```{r}
-FigS2 <- ((shannon_random_plot | shannon_tolerant_plot) /
+FigS3 <- ((shannon_random_plot | shannon_tolerant_plot) /
   ( shannon_mixed_plot | shannon_sensitive_plot ) ) +
-  plot_annotation(title = "Figure S2: Shannon diversity indeces", tag_levels = "A") +
+  plot_annotation(tag_levels = "A") +
   plot_layout(guides = "collect") &
-  theme(axis.title.y = element_blank(),
-        legend.position = "bottom",
+  theme(legend.position = "bottom",
         text = element_text(family = "NimbusMon")) 
 ```
 
 ```{r}
-FigS2
+FigS3
 ```
 
+```{r}
+png("Supplemental_Figures/Figure_S3.png",width = 720, height = 560)
+FigS3
+dev.off()
+```
 
 ### AOV
 

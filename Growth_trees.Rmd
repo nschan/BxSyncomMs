@@ -3090,11 +3090,21 @@ phytools::phylosig(tree = apo_50um_sorted_xantho$phy,
             method = "lambda",
             test = TRUE) 
 ```
+#### Figure S1
+
 ```{r}
-Xanthos_tree_boa_apo +
+xantho_plot <- Xanthos_tree_boa_apo +
   ggtitle("Xanthomonadales",
           sub = expression(paste(lambda, " = 1, p < 0.001" )))
+xantho_plot
 ```
+
+```{r}
+png("Supplemental_Figures/Figure_S1.png",width = 960, height = 720)
+xantho_plot
+dev.off()
+```
+
 
 ### Tree
 
